@@ -7,11 +7,14 @@ import { BadRequestError } from "../../common/errors/http.error";
 import { SubjectService } from "./subject.service";
 import { SubscriptionService } from "./subscription.service";
 import { NotificationService } from "./notification.service";
+import { StoredFileService } from "./stored-file.service";
+import { FileStorageService } from "../storage/file-storage.service";
 
 export class LectureService extends TenantService<Lecture> {
   private _subjectService?: SubjectService;
   private _subscriptionService?: SubscriptionService;
   private _notificationService?: NotificationService;
+  private _storedFileService?: StoredFileService;
 
   constructor(tenantContext: TenantContext) {
     // Lecture is period-scoped: true
@@ -39,7 +42,14 @@ export class LectureService extends TenantService<Lecture> {
     return this._notificationService;
   }
 
-  async createLecture(dto: CreateLectureDto) {
+  protected get storedFileService(): StoredFileService {
+    if (!this._storedFileService) {
+      this._storedFileService = new StoredFileService(this.tenantContext);
+    }
+    return this._storedFileService;
+  }
+
+  async createLecture(dto: CreateLectureDto, file?: Express.Multer.File) {
     if (!this.timePeriodId) {
       throw new BadRequestError("لا توجد فترة زمنية نشطة محددة لرفع المحاضرة");
     }
@@ -48,12 +58,29 @@ export class LectureService extends TenantService<Lecture> {
     const subject = await this.subjectService.findById(dto.subjectId);
     Ensure.exists(subject, "subject", "المادة الدراسية غير موجودة في هذه المكتبة");
 
+    let fileId: string | null = null;
+    if (file) {
+      const subjectFolder = FileStorageService.getSubjectFolder(subject!.name, subject!.id);
+      const saved = await FileStorageService.savePdfFile(subjectFolder, file.buffer);
+
+      const storedFile = await this.storedFileService.createFileRecord({
+        subjectId: dto.subjectId,
+        featureType: FeatureType.LECTURES,
+        originalName: file.originalname,
+        mimeType: file.mimetype || "application/pdf",
+        size: saved.size,
+        storageKey: saved.storageKey,
+        timePeriodId: this.timePeriodId,
+      });
+
+      fileId = storedFile.id;
+    }
+
     const lecture = await this.create({
       subjectId: dto.subjectId,
       title: dto.title.trim(),
       description: dto.description?.trim() || null,
-      videoUrl: dto.videoUrl?.trim() || null,
-      attachmentUrl: dto.attachmentUrl?.trim() || null,
+      fileId,
       orderIndex: dto.orderIndex ?? 0,
     });
 
@@ -83,14 +110,71 @@ export class LectureService extends TenantService<Lecture> {
     };
   }
 
-  async updateLecture(id: string, dto: UpdateLectureDto) {
-    return await this.update(id, {
+  async updateLecture(id: string, dto: UpdateLectureDto, file?: Express.Multer.File) {
+    const existing = await this.getById(id, {
+      include: { file: true, subject: true },
+    }) as any;
+    Ensure.exists(existing, "lecture", "المحاضرة غير موجودة");
+
+    let newFileId = existing.fileId;
+    let oldFileToDelete: { id: string; storageKey: string } | null = null;
+
+    if (file) {
+      const subjectFolder = FileStorageService.getSubjectFolder(
+        existing.subject.name,
+        existing.subject.id
+      );
+      const saved = await FileStorageService.savePdfFile(subjectFolder, file.buffer);
+
+      const newStoredFile = await this.storedFileService.createFileRecord({
+        subjectId: existing.subjectId,
+        featureType: FeatureType.LECTURES,
+        originalName: file.originalname,
+        mimeType: file.mimetype || "application/pdf",
+        size: saved.size,
+        storageKey: saved.storageKey,
+        timePeriodId: this.timePeriodId,
+      });
+
+      newFileId = newStoredFile.id;
+      if (existing.file) {
+        oldFileToDelete = {
+          id: existing.file.id,
+          storageKey: existing.file.storageKey,
+        };
+      }
+    }
+
+    const updated = await this.update(id, {
       title: dto.title?.trim(),
       description: dto.description?.trim(),
-      videoUrl: dto.videoUrl?.trim(),
-      attachmentUrl: dto.attachmentUrl?.trim(),
       orderIndex: dto.orderIndex,
+      fileId: newFileId,
     });
+
+    // Safely delete old physical file and record after successful update
+    if (oldFileToDelete) {
+      await FileStorageService.deletePhysicalFile(oldFileToDelete.storageKey);
+      await this.storedFileService.deleteFileRecord(oldFileToDelete.id);
+    }
+
+    return updated;
+  }
+
+  async deleteLecture(id: string) {
+    const existing = await this.getById(id, {
+      include: { file: true },
+    }) as any;
+    Ensure.exists(existing, "lecture", "المحاضرة غير موجودة");
+
+    await this.delete(id);
+
+    if (existing.file) {
+      await FileStorageService.deletePhysicalFile(existing.file.storageKey);
+      await this.storedFileService.deleteFileRecord(existing.file.id);
+    }
+
+    return { success: true };
   }
 
   async fetchLectures(subjectId?: string) {
@@ -124,6 +208,15 @@ export class LectureService extends TenantService<Lecture> {
       where,
       include: {
         subject: { select: { id: true, name: true, code: true } },
+        file: {
+          select: {
+            id: true,
+            originalName: true,
+            size: true,
+            mimeType: true,
+            createdAt: true,
+          },
+        },
       },
       orderBy: { orderIndex: "asc" },
     });

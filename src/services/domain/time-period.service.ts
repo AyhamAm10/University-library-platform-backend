@@ -190,8 +190,7 @@ export class TimePeriodService extends TenantService<TimePeriod> {
           subjectId: targetSubjectId || original!.subjectId,
           title: `${original!.title} (منسوخ)`,
           description: original!.description,
-          videoUrl: original!.videoUrl,
-          attachmentUrl: original!.attachmentUrl,
+          fileId: (original as any)!.fileId,
           orderIndex: original!.orderIndex,
         });
       }
@@ -216,7 +215,7 @@ export class TimePeriodService extends TenantService<TimePeriod> {
           subjectId: targetSubjectId || original!.subjectId,
           title: `${original!.title} (منسوخ)`,
           description: original!.description,
-          fileUrl: original!.fileUrl,
+          fileId: (original as any)!.fileId,
         });
       }
       case "COURSE": {

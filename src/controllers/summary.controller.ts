@@ -11,7 +11,7 @@ export class SummaryController {
     try {
       const dto = await validator(CreateSummaryMaterialSchema, req.body);
       const service = new SummaryService(req.tenant!);
-      const summary = await service.createSummaryMaterial(dto as CreateSummaryMaterialDto);
+      const summary = await service.createSummaryMaterial(dto as CreateSummaryMaterialDto, req.file);
 
       return res
         .status(HttpStatusCode.CREATED)
@@ -27,9 +27,22 @@ export class SummaryController {
       Ensure.exists(id, "معرف الملخص");
       const dto = await validator(UpdateSummaryMaterialSchema, req.body);
       const service = new SummaryService(req.tenant!);
-      const updated = await service.updateSummaryMaterial(id, dto as UpdateSummaryMaterialDto);
+      const updated = await service.updateSummaryMaterial(id, dto as UpdateSummaryMaterialDto, req.file);
 
       return res.status(HttpStatusCode.OK).json(ApiResponse.success(updated, "تم تحديث بيانات الملخص بنجاح"));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteSummaryMaterial(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      Ensure.exists(id, "معرف الملخص");
+      const service = new SummaryService(req.tenant!);
+      const result = await service.deleteSummaryMaterial(id);
+
+      return res.status(HttpStatusCode.OK).json(ApiResponse.success(result, "تم حذف الملخص بنجاح"));
     } catch (error) {
       next(error);
     }

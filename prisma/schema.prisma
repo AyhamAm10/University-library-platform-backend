@@ -81,6 +81,7 @@ model Library {
   summaries      SummaryMaterial[]
   courses        Course[]
   questions      QuestionBankItem[]
+  storedFiles    StoredFile[]
   notifications  Notification[]
 
   @@map("libraries")
@@ -104,6 +105,7 @@ model TimePeriod {
   summaries     SummaryMaterial[]
   courses       Course[]
   questions     QuestionBankItem[]
+  storedFiles   StoredFile[]
 
   @@index([libraryId, status])
   @@map("time_periods")
@@ -204,6 +206,7 @@ model Subject {
   summaries     SummaryMaterial[]
   courses       Course[]
   questions     QuestionBankItem[]
+  storedFiles   StoredFile[]
 
   @@index([libraryId])
   @@index([branchId])
@@ -244,8 +247,7 @@ model Lecture {
   departmentId  String?
   title         String
   description   String?
-  videoUrl      String?
-  attachmentUrl String?
+  fileId        String?
   orderIndex    Int         @default(0)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -254,6 +256,7 @@ model Lecture {
   timePeriod    TimePeriod  @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
   subject       Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   department    Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  file          StoredFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
 
   @@index([libraryId, timePeriodId, subjectId])
   @@index([departmentId])
@@ -290,7 +293,7 @@ model SummaryMaterial {
   departmentId String?
   title        String
   description  String?
-  fileUrl      String?
+  fileId       String?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
@@ -298,6 +301,7 @@ model SummaryMaterial {
   timePeriod   TimePeriod  @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
   subject      Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  file         StoredFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
 
   @@index([libraryId, timePeriodId, subjectId])
   @@index([departmentId])
@@ -341,30 +345,56 @@ model CourseLesson {
 }
 
 model QuestionBankItem {
-  id            String       @id @default(uuid())
+  id            String        @id @default(uuid())
   libraryId     String
   timePeriodId  String
   subjectId     String
   departmentId  String?
   title         String?
-  questionText  String
-  questionType  QuestionType @default(MULTIPLE_CHOICE)
-  options       Json
-  correctAnswer String
+  questionText  String?
+  questionType  QuestionType? @default(MULTIPLE_CHOICE)
+  options       Json?
+  correctAnswer String?
   explanation   String?
-  difficulty    String       @default("MEDIUM")
-  fileUrl       String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  difficulty    String?       @default("MEDIUM")
+  fileId        String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
-  library       Library      @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  timePeriod    TimePeriod   @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
-  subject       Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  department    Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  library       Library       @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  timePeriod    TimePeriod    @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
+  subject       Subject       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  department    Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  file          StoredFile?   @relation(fields: [fileId], references: [id], onDelete: SetNull)
 
   @@index([libraryId, timePeriodId, subjectId])
   @@index([departmentId])
   @@map("question_bank_items")
+}
+
+model StoredFile {
+  id           String      @id @default(uuid())
+  libraryId    String
+  timePeriodId String?
+  subjectId    String
+  featureType  FeatureType
+  originalName String
+  mimeType     String      @default("application/pdf")
+  size         Int
+  storageKey   String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  library      Library     @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  timePeriod   TimePeriod? @relation(fields: [timePeriodId], references: [id], onDelete: SetNull)
+  subject      Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  lectures     Lecture[]
+  summaries    SummaryMaterial[]
+  questions    QuestionBankItem[]
+
+  @@index([libraryId, subjectId, featureType])
+  @@map("stored_files")
 }
 
 model Notification {

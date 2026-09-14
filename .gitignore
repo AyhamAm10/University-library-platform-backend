@@ -30,6 +30,7 @@ coverage/
 scratch/
 tmp/
 temp/
+storage/
 
 # OS / Editor files
 .DS_Store

@@ -9,9 +9,17 @@ import { Ensure } from "../common/errors/Ensure.handler";
 export class QuestionBankController {
   async createQuestion(req: Request, res: Response, next: NextFunction) {
     try {
+      if (typeof req.body.options === "string") {
+        try {
+          req.body.options = JSON.parse(req.body.options);
+        } catch {
+          req.body.options = undefined;
+        }
+      }
+
       const dto = await validator(CreateQuestionSchema, req.body);
       const service = new QuestionBankService(req.tenant!);
-      const question = await service.createQuestion(dto as CreateQuestionDto);
+      const question = await service.createQuestion(dto as CreateQuestionDto, req.file);
 
       return res
         .status(HttpStatusCode.CREATED)
@@ -25,11 +33,33 @@ export class QuestionBankController {
     try {
       const { id } = req.params;
       Ensure.exists(id, "معرف السؤال");
+
+      if (typeof req.body.options === "string") {
+        try {
+          req.body.options = JSON.parse(req.body.options);
+        } catch {
+          req.body.options = undefined;
+        }
+      }
+
       const dto = await validator(UpdateQuestionSchema, req.body);
       const service = new QuestionBankService(req.tenant!);
-      const updated = await service.updateQuestion(id, dto as UpdateQuestionDto);
+      const updated = await service.updateQuestion(id, dto as UpdateQuestionDto, req.file);
 
       return res.status(HttpStatusCode.OK).json(ApiResponse.success(updated, "تم تحديث السؤال بنجاح"));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteQuestion(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      Ensure.exists(id, "معرف السؤال");
+      const service = new QuestionBankService(req.tenant!);
+      const result = await service.deleteQuestion(id);
+
+      return res.status(HttpStatusCode.OK).json(ApiResponse.success(result, "تم حذف السؤال بنجاح"));
     } catch (error) {
       next(error);
     }

@@ -11,7 +11,7 @@ export class LectureController {
     try {
       const dto = await validator(CreateLectureSchema, req.body);
       const service = new LectureService(req.tenant!);
-      const result = await service.createLecture(dto as CreateLectureDto);
+      const result = await service.createLecture(dto as CreateLectureDto, req.file);
 
       return res.status(HttpStatusCode.CREATED).json(
         ApiResponse.success(
@@ -30,9 +30,22 @@ export class LectureController {
       Ensure.exists(id, "معرف المحاضرة");
       const dto = await validator(UpdateLectureSchema, req.body);
       const service = new LectureService(req.tenant!);
-      const updated = await service.updateLecture(id, dto as UpdateLectureDto);
+      const updated = await service.updateLecture(id, dto as UpdateLectureDto, req.file);
 
       return res.status(HttpStatusCode.OK).json(ApiResponse.success(updated, "تم تحديث بيانات المحاضرة بنجاح"));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteLecture(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      Ensure.exists(id, "معرف المحاضرة");
+      const service = new LectureService(req.tenant!);
+      const result = await service.deleteLecture(id);
+
+      return res.status(HttpStatusCode.OK).json(ApiResponse.success(result, "تم حذف المحاضرة بنجاح"));
     } catch (error) {
       next(error);
     }
