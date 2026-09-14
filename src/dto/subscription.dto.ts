@@ -10,6 +10,7 @@ export const CreateSubscriptionSchema = yup.object({
       "نوع الخدمة التعليمية غير صالح"
     )
     .required("نوع الخدمة التعليمية مطلوب"),
+  materialId: yup.string().optional().nullable(),
 });
 
 export type CreateSubscriptionDto = yup.InferType<typeof CreateSubscriptionSchema>;

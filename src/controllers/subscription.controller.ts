@@ -38,10 +38,17 @@ export class SubscriptionController {
 
   async getSubscriptions(req: Request, res: Response, next: NextFunction) {
     try {
-      const { studentId, subjectId, featureType, status, timePeriodId, page, limit } = req.query;
+      const { subjectId, featureType, status, timePeriodId, page, limit } = req.query;
+      let studentId = req.query.studentId as string;
+
+      // If caller is a student, restrict queries strictly to their own subscriptions
+      if (req.tenant?.role === "STUDENT" && req.tenant?.userId) {
+        studentId = req.tenant.userId;
+      }
+
       const service = new SubscriptionService(req.tenant!);
       const result = await service.fetchSubscriptions({
-        studentId: studentId as string,
+        studentId,
         subjectId: subjectId as string,
         featureType: featureType as string,
         status: status as string,

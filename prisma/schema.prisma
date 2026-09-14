@@ -218,6 +218,7 @@ model Subscription {
   studentId    String
   subjectId    String
   featureType  FeatureType
+  materialId   String?
   status       SubscriptionStatus @default(ACTIVE)
   subscribedAt DateTime           @default(now())
   expiresAt    DateTime?
@@ -229,8 +230,9 @@ model Subscription {
   student      Student            @relation(fields: [studentId], references: [id], onDelete: Cascade)
   subject      Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
 
-  @@unique([studentId, subjectId, featureType, timePeriodId])
+  @@unique([studentId, subjectId, featureType, materialId, timePeriodId])
   @@index([libraryId, timePeriodId, status])
+  @@index([studentId, subjectId, featureType])
   @@map("subscriptions")
 }
 
@@ -344,12 +346,14 @@ model QuestionBankItem {
   timePeriodId  String
   subjectId     String
   departmentId  String?
+  title         String?
   questionText  String
   questionType  QuestionType @default(MULTIPLE_CHOICE)
   options       Json
   correctAnswer String
   explanation   String?
   difficulty    String       @default("MEDIUM")
+  fileUrl       String?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 

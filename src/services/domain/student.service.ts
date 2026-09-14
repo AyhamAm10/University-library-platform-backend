@@ -7,6 +7,7 @@ import { CreateStudentDto, UpdateStudentDto } from "../../dto/student.dto";
 import bcrypt from "bcryptjs";
 import { BranchService } from "./branch.service";
 import { DepartmentService } from "./department.service";
+import { prisma } from "../../config/prisma";
 
 export class StudentService extends TenantService<Student> {
   private _branchService?: BranchService;
@@ -200,11 +201,49 @@ export class StudentService extends TenantService<Student> {
 
     Ensure.exists(student, "student");
 
-    const activeSubscriptions = (student as any).subscriptions?.filter((s: any) => s.status === "ACTIVE") || [];
-    const expiredSubscriptions = (student as any).subscriptions?.filter((s: any) => s.status === "EXPIRED" || s.status === "CANCELLED") || [];
+    const materialIds = ((student as any).subscriptions || [])
+      .map((s: any) => s.materialId)
+      .filter((mid: any): mid is string => Boolean(mid));
+
+    let materialMap: Record<string, { id: string; title: string }> = {};
+
+    if (materialIds.length > 0) {
+      const [golds, summaries, courses, questions] = await Promise.all([
+        (prisma as any).goldMaterial.findMany({
+          where: { id: { in: materialIds } },
+          select: { id: true, title: true },
+        }),
+        (prisma as any).summaryMaterial.findMany({
+          where: { id: { in: materialIds } },
+          select: { id: true, title: true },
+        }),
+        (prisma as any).course.findMany({
+          where: { id: { in: materialIds } },
+          select: { id: true, title: true },
+        }),
+        (prisma as any).questionBankItem.findMany({
+          where: { id: { in: materialIds } },
+          select: { id: true, title: true, questionText: true },
+        }),
+      ]);
+
+      golds.forEach((g: any) => { materialMap[g.id] = { id: g.id, title: g.title }; });
+      summaries.forEach((s: any) => { materialMap[s.id] = { id: s.id, title: s.title }; });
+      courses.forEach((c: any) => { materialMap[c.id] = { id: c.id, title: c.title }; });
+      questions.forEach((q: any) => { materialMap[q.id] = { id: q.id, title: q.title || q.questionText }; });
+    }
+
+    const allSubscriptions = ((student as any).subscriptions || []).map((sub: any) => ({
+      ...sub,
+      material: sub.materialId ? materialMap[sub.materialId] || null : null,
+    }));
+
+    const activeSubscriptions = allSubscriptions.filter((s: any) => s.status === "ACTIVE");
+    const expiredSubscriptions = allSubscriptions.filter((s: any) => s.status === "EXPIRED" || s.status === "CANCELLED");
 
     return {
       ...student,
+      subscriptions: allSubscriptions,
       activeSubscriptions,
       expiredSubscriptions,
     };

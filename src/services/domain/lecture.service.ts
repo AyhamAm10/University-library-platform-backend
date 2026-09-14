@@ -95,7 +95,28 @@ export class LectureService extends TenantService<Lecture> {
 
   async fetchLectures(subjectId?: string) {
     const where: any = {};
-    if (subjectId) {
+
+    // For students: enforce active subscription for FeatureType.LECTURES
+    if (this.tenantContext.role === "STUDENT" && this.tenantContext.userId) {
+      const subscribedSubjectIds = await this.subscriptionService.getStudentActiveSubscribedSubjectIds(
+        this.tenantContext.userId,
+        FeatureType.LECTURES
+      );
+
+      // If student has no active subscriptions for lectures, return empty immediately
+      if (subscribedSubjectIds.length === 0) {
+        return [];
+      }
+
+      if (subjectId) {
+        if (!subscribedSubjectIds.includes(subjectId)) {
+          return [];
+        }
+        where.subjectId = subjectId;
+      } else {
+        where.subjectId = { in: subscribedSubjectIds };
+      }
+    } else if (subjectId) {
       where.subjectId = subjectId;
     }
 

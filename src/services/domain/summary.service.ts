@@ -1,13 +1,15 @@
 import { TenantService } from "../tenant.service";
-import { SummaryMaterial } from "@prisma/client";
+import { SummaryMaterial, FeatureType } from "@prisma/client";
 import { TenantContext } from "../../types/tenant.context";
 import { CreateSummaryMaterialDto, UpdateSummaryMaterialDto } from "../../dto/summary.dto";
 import { Ensure } from "../../common/errors/Ensure.handler";
 import { BadRequestError } from "../../common/errors/http.error";
 import { SubjectService } from "./subject.service";
+import { SubscriptionService } from "./subscription.service";
 
 export class SummaryService extends TenantService<SummaryMaterial> {
   private _subjectService?: SubjectService;
+  private _subscriptionService?: SubscriptionService;
 
   constructor(tenantContext: TenantContext) {
     super("summaryMaterial", "summaryMaterial", tenantContext, true);
@@ -18,6 +20,13 @@ export class SummaryService extends TenantService<SummaryMaterial> {
       this._subjectService = new SubjectService(this.tenantContext);
     }
     return this._subjectService;
+  }
+
+  protected get subscriptionService(): SubscriptionService {
+    if (!this._subscriptionService) {
+      this._subscriptionService = new SubscriptionService(this.tenantContext);
+    }
+    return this._subscriptionService;
   }
 
   async createSummaryMaterial(dto: CreateSummaryMaterialDto) {
@@ -46,7 +55,22 @@ export class SummaryService extends TenantService<SummaryMaterial> {
 
   async fetchSummaryMaterials(subjectId?: string) {
     const where: any = {};
-    if (subjectId) {
+
+    // For students: enforce active subscription per specific file / material!
+    if (this.tenantContext.role === "STUDENT" && this.tenantContext.userId) {
+      const subscribedMaterialIds = await this.subscriptionService.getStudentActiveSubscribedMaterialIds(
+        this.tenantContext.userId,
+        FeatureType.SUMMARIES,
+        subjectId
+      );
+
+      // If student has no active subscriptions for summaries, return empty immediately
+      if (subscribedMaterialIds.length === 0) {
+        return [];
+      }
+
+      where.id = { in: subscribedMaterialIds };
+    } else if (subjectId) {
       where.subjectId = subjectId;
     }
 

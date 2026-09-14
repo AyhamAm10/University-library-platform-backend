@@ -1,15 +1,17 @@
 import { TenantService } from "../tenant.service";
-import { Course } from "@prisma/client";
+import { Course, FeatureType } from "@prisma/client";
 import { TenantContext } from "../../types/tenant.context";
 import { CreateCourseDto, AddCourseLessonDto } from "../../dto/course.dto";
 import { Ensure } from "../../common/errors/Ensure.handler";
-import { BadRequestError } from "../../common/errors/http.error";
+import { BadRequestError, ForbiddenError } from "../../common/errors/http.error";
 import { SubjectService } from "./subject.service";
 import { CourseLessonService } from "./course-lesson.service";
+import { SubscriptionService } from "./subscription.service";
 
 export class CourseService extends TenantService<Course> {
   private _subjectService?: SubjectService;
   private _courseLessonService?: CourseLessonService;
+  private _subscriptionService?: SubscriptionService;
 
   constructor(tenantContext: TenantContext) {
     super("course", "course", tenantContext, true);
@@ -27,6 +29,13 @@ export class CourseService extends TenantService<Course> {
       this._courseLessonService = new CourseLessonService();
     }
     return this._courseLessonService;
+  }
+
+  protected get subscriptionService(): SubscriptionService {
+    if (!this._subscriptionService) {
+      this._subscriptionService = new SubscriptionService(this.tenantContext);
+    }
+    return this._subscriptionService;
   }
 
   async createCourse(dto: CreateCourseDto) {
@@ -54,7 +63,22 @@ export class CourseService extends TenantService<Course> {
 
   async fetchCourses(subjectId?: string) {
     const where: any = {};
-    if (subjectId) {
+
+    // For students: enforce active subscription per specific course / material!
+    if (this.tenantContext.role === "STUDENT" && this.tenantContext.userId) {
+      const subscribedMaterialIds = await this.subscriptionService.getStudentActiveSubscribedMaterialIds(
+        this.tenantContext.userId,
+        FeatureType.COURSES,
+        subjectId
+      );
+
+      // If student has no active subscriptions for courses, return empty immediately
+      if (subscribedMaterialIds.length === 0) {
+        return [];
+      }
+
+      where.id = { in: subscribedMaterialIds };
+    } else if (subjectId) {
       where.subjectId = subjectId;
     }
 
@@ -70,12 +94,27 @@ export class CourseService extends TenantService<Course> {
   }
 
   async fetchCourseDetails(id: string) {
-    return await this.getById(id, {
+    const course = await this.getById(id, {
       include: {
         subject: true,
         lessons: { orderBy: { orderIndex: "asc" } },
       },
     });
+    Ensure.exists(course, "course");
+
+    // For students: verify active subscription to this specific course
+    if (this.tenantContext.role === "STUDENT" && this.tenantContext.userId) {
+      const subscribedCourseIds = await this.subscriptionService.getStudentActiveSubscribedMaterialIds(
+        this.tenantContext.userId,
+        FeatureType.COURSES
+      );
+
+      if (!subscribedCourseIds.includes(id)) {
+        throw new ForbiddenError("غير مصرح لك بمشاهدة تفاصيل هذه الدورة لعدم وجود اشتراك فعال");
+      }
+    }
+
+    return course;
   }
 
   async getCourseWithLessons(id: string) {
