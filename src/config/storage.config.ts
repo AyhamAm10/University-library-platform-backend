@@ -8,7 +8,7 @@ export const StorageConfig = {
   MAX_FILE_SIZE: 15 * 1024 * 1024,
 
   // Allowed MIME types
-  ALLOWED_MIME_TYPES: ["application/pdf"],
+  ALLOWED_MIME_TYPES: ["application/pdf", "application/x-pdf", "application/acrobat"],
 
   // Allowed file extensions
   ALLOWED_EXTENSIONS: [".pdf"],

@@ -54,6 +54,11 @@ export class QuestionBankService extends TenantService<QuestionBankItem> {
       }
     }
 
+    // Ensure either an interactive question or a PDF file is provided
+    if (!dto.questionText && !file) {
+      throw new BadRequestError("يجب إرفاق ملف PDF للأسئلة أو إدخال نص السؤال التفاعلي");
+    }
+
     let fileId: string | null = null;
     if (file) {
       const subjectFolder = FileStorageService.getSubjectFolder(subject!.name, subject!.id);

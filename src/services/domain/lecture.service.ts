@@ -58,23 +58,24 @@ export class LectureService extends TenantService<Lecture> {
     const subject = await this.subjectService.findById(dto.subjectId);
     Ensure.exists(subject, "subject", "المادة الدراسية غير موجودة في هذه المكتبة");
 
-    let fileId: string | null = null;
-    if (file) {
-      const subjectFolder = FileStorageService.getSubjectFolder(subject!.name, subject!.id);
-      const saved = await FileStorageService.savePdfFile(subjectFolder, file.buffer);
-
-      const storedFile = await this.storedFileService.createFileRecord({
-        subjectId: dto.subjectId,
-        featureType: FeatureType.LECTURES,
-        originalName: file.originalname,
-        mimeType: file.mimetype || "application/pdf",
-        size: saved.size,
-        storageKey: saved.storageKey,
-        timePeriodId: this.timePeriodId,
-      });
-
-      fileId = storedFile.id;
+    if (!file) {
+      throw new BadRequestError("يجب إرفاق ملف المحاضرة بصيغة PDF");
     }
+
+    const subjectFolder = FileStorageService.getSubjectFolder(subject!.name, subject!.id);
+    const saved = await FileStorageService.savePdfFile(subjectFolder, file.buffer);
+
+    const storedFile = await this.storedFileService.createFileRecord({
+      subjectId: dto.subjectId,
+      featureType: FeatureType.LECTURES,
+      originalName: file.originalname,
+      mimeType: file.mimetype || "application/pdf",
+      size: saved.size,
+      storageKey: saved.storageKey,
+      timePeriodId: this.timePeriodId,
+    });
+
+    const fileId = storedFile.id;
 
     const lecture = await this.create({
       subjectId: dto.subjectId,
