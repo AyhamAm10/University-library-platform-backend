@@ -1,0 +1,381 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  LIBRARY_ADMIN
+}
+
+enum PeriodStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum FeatureType {
+  LECTURES
+  GOLD_PAPERS
+  SUMMARIES
+  COURSES
+  QUESTION_BANK
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+}
+
+model User {
+  id           String    @id @default(uuid())
+  phone        String?   @unique
+  email        String?   @unique
+  fullName     String
+  passwordHash String
+  role         UserRole  @default(LIBRARY_ADMIN)
+  libraryId    String?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  library      Library?  @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+
+  @@index([phone])
+  @@index([email])
+  @@index([libraryId])
+  @@map("users")
+}
+
+model Library {
+  id             String         @id @default(uuid())
+  name           String
+  code           String         @unique
+  logoUrl        String?
+  phone          String?
+  address        String?
+  primaryColor   String         @default("#1a73e8")
+  secondaryColor String         @default("#34a853")
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  admins         User[]
+  timePeriods    TimePeriod[]
+  branches       Branch[]
+  departments    Department[]
+  students       Student[]
+  subjects       Subject[]
+  subscriptions  Subscription[]
+  lectures       Lecture[]
+  goldMaterials  GoldMaterial[]
+  summaries      SummaryMaterial[]
+  courses        Course[]
+  questions      QuestionBankItem[]
+  notifications  Notification[]
+
+  @@map("libraries")
+}
+
+model TimePeriod {
+  id          String       @id @default(uuid())
+  libraryId   String
+  name        String
+  startDate   DateTime
+  endDate     DateTime?
+  status      PeriodStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  library     Library      @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+
+  subscriptions Subscription[]
+  lectures      Lecture[]
+  goldMaterials GoldMaterial[]
+  summaries     SummaryMaterial[]
+  courses       Course[]
+  questions     QuestionBankItem[]
+
+  @@index([libraryId, status])
+  @@map("time_periods")
+}
+
+model Branch {
+  id             String       @id @default(uuid())
+  libraryId      String
+  name           String
+  code           String?
+  hasDepartments Boolean      @default(false)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  library        Library      @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  departments    Department[]
+  students       Student[]
+  subjects       Subject[]
+
+  @@index([libraryId])
+  @@map("branches")
+}
+
+model Department {
+  id          String    @id @default(uuid())
+  libraryId   String
+  branchId    String
+  parentId    String?
+  name        String
+  code        String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  library         Library            @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  branch          Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  parent          Department?        @relation("DepartmentSpecialization", fields: [parentId], references: [id], onDelete: Cascade)
+  specializations Department[]       @relation("DepartmentSpecialization")
+  students        Student[]
+  subjects        Subject[]
+  lectures        Lecture[]
+  goldMaterials   GoldMaterial[]
+  summaries       SummaryMaterial[]
+  questions       QuestionBankItem[]
+
+  @@index([libraryId, branchId])
+  @@index([parentId])
+  @@map("departments")
+}
+
+model Student {
+  id           String        @id @default(uuid())
+  studentCode  String?       @unique
+  libraryId    String
+  branchId     String?
+  departmentId String?
+  fullName     String
+  dateOfBirth  DateTime
+  phone        String        @unique
+  passwordHash         String?
+  isActive             Boolean       @default(true)
+  boundDeviceId        String?
+  activationCode       String?
+  activationExpiresAt  DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  library      Library       @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  branch       Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  subscriptions Subscription[]
+  notifications Notification[]
+
+  @@index([libraryId, branchId])
+  @@map("students")
+}
+
+model Subject {
+  id          String             @id @default(uuid())
+  libraryId   String
+  branchId    String?
+  departmentId String?
+  name        String
+  code        String?
+  description String?
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  library     Library            @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  branch      Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  department  Department?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  subscriptions Subscription[]
+  lectures      Lecture[]
+  goldMaterials GoldMaterial[]
+  summaries     SummaryMaterial[]
+  courses       Course[]
+  questions     QuestionBankItem[]
+
+  @@index([libraryId])
+  @@index([branchId])
+  @@index([departmentId])
+  @@map("subjects")
+}
+
+model Subscription {
+  id           String             @id @default(uuid())
+  libraryId    String
+  timePeriodId String
+  studentId    String
+  subjectId    String
+  featureType  FeatureType
+  status       SubscriptionStatus @default(ACTIVE)
+  subscribedAt DateTime           @default(now())
+  expiresAt    DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  library      Library            @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  timePeriod   TimePeriod         @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
+  student      Student            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject      Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, subjectId, featureType, timePeriodId])
+  @@index([libraryId, timePeriodId, status])
+  @@map("subscriptions")
+}
+
+model Lecture {
+  id            String      @id @default(uuid())
+  libraryId     String
+  timePeriodId  String
+  subjectId     String
+  departmentId  String?
+  title         String
+  description   String?
+  videoUrl      String?
+  attachmentUrl String?
+  orderIndex    Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  library       Library     @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  timePeriod    TimePeriod  @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
+  subject       Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  department    Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  @@index([libraryId, timePeriodId, subjectId])
+  @@index([departmentId])
+  @@map("lectures")
+}
+
+model GoldMaterial {
+  id           String      @id @default(uuid())
+  libraryId    String
+  timePeriodId String
+  subjectId    String
+  departmentId String?
+  title        String
+  description  String?
+  fileUrl      String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  library      Library     @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  timePeriod   TimePeriod  @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
+  subject      Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  @@index([libraryId, timePeriodId, subjectId])
+  @@index([departmentId])
+  @@map("gold_materials")
+}
+
+model SummaryMaterial {
+  id           String      @id @default(uuid())
+  libraryId    String
+  timePeriodId String
+  subjectId    String
+  departmentId String?
+  title        String
+  description  String?
+  fileUrl      String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  library      Library     @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  timePeriod   TimePeriod  @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
+  subject      Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  @@index([libraryId, timePeriodId, subjectId])
+  @@index([departmentId])
+  @@map("summary_materials")
+}
+
+model Course {
+  id           String         @id @default(uuid())
+  libraryId    String
+  timePeriodId String
+  subjectId    String
+  title        String
+  description  String?
+  thumbnailUrl String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  library      Library        @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  timePeriod   TimePeriod     @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
+  subject      Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  lessons      CourseLesson[]
+
+  @@index([libraryId, timePeriodId, subjectId])
+  @@map("courses")
+}
+
+model CourseLesson {
+  id         String   @id @default(uuid())
+  courseId   String
+  title      String
+  videoUrl   String?
+  duration   String?
+  orderIndex Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId])
+  @@map("course_lessons")
+}
+
+model QuestionBankItem {
+  id            String       @id @default(uuid())
+  libraryId     String
+  timePeriodId  String
+  subjectId     String
+  departmentId  String?
+  questionText  String
+  questionType  QuestionType @default(MULTIPLE_CHOICE)
+  options       Json
+  correctAnswer String
+  explanation   String?
+  difficulty    String       @default("MEDIUM")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  library       Library      @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  timePeriod    TimePeriod   @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
+  subject       Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  department    Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  @@index([libraryId, timePeriodId, subjectId])
+  @@index([departmentId])
+  @@map("question_bank_items")
+}
+
+model Notification {
+  id           String      @id @default(uuid())
+  libraryId    String
+  studentId    String?
+  title        String
+  message      String
+  type         String      @default("INFO")
+  isRead       Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+
+  library      Library     @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  student      Student?    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([libraryId, studentId])
+  @@map("notifications")
+}
