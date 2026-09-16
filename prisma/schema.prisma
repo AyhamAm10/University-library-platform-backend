@@ -31,6 +31,12 @@ enum SubscriptionStatus {
   CANCELLED
 }
 
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum QuestionType {
   MULTIPLE_CHOICE
   TRUE_FALSE
@@ -83,6 +89,7 @@ model Library {
   questions      QuestionBankItem[]
   storedFiles    StoredFile[]
   notifications  Notification[]
+  subscriptionRequests SubscriptionRequest[]
 
   @@map("libraries")
 }
@@ -106,6 +113,7 @@ model TimePeriod {
   courses       Course[]
   questions     QuestionBankItem[]
   storedFiles   StoredFile[]
+  subscriptionRequests SubscriptionRequest[]
 
   @@index([libraryId, status])
   @@map("time_periods")
@@ -179,6 +187,7 @@ model Student {
   department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   subscriptions Subscription[]
   notifications Notification[]
+  subscriptionRequests SubscriptionRequest[]
 
   @@index([libraryId, branchId])
   @@map("students")
@@ -207,6 +216,7 @@ model Subject {
   courses       Course[]
   questions     QuestionBankItem[]
   storedFiles   StoredFile[]
+  subscriptionRequests SubscriptionRequest[]
 
   @@index([libraryId])
   @@index([branchId])
@@ -412,4 +422,28 @@ model Notification {
 
   @@index([libraryId, studentId])
   @@map("notifications")
+}
+
+model SubscriptionRequest {
+  id           String        @id @default(uuid())
+  libraryId    String
+  timePeriodId String
+  studentId    String
+  subjectId    String
+  featureType  FeatureType
+  materialId   String?
+  status       RequestStatus @default(PENDING)
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  library      Library       @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  timePeriod   TimePeriod    @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
+  student      Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject      Subject       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@index([libraryId, timePeriodId, status])
+  @@index([studentId, featureType, status])
+  @@index([studentId, subjectId, featureType, materialId])
+  @@map("subscription_requests")
 }

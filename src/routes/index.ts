@@ -13,6 +13,8 @@ import { summaryRouter } from "./summary.route";
 import { courseRouter } from "./course.route";
 import { questionBankRouter } from "./question-bank.route";
 import { subscriptionRouter } from "./subscription.route";
+import { subscriptionRequestRouter } from "./subscription-request.route";
+import { groupedContentRouter } from "./grouped-content.route";
 import { fileRouter } from "./file.route";
 
 export const mainRouter = Router();
@@ -34,5 +36,7 @@ mainRouter.use("/content/gold", goldRouter);
 mainRouter.use("/content/summaries", summaryRouter);
 mainRouter.use("/content/courses", courseRouter);
 mainRouter.use("/content/question-bank", questionBankRouter);
+mainRouter.use("/content/grouped", groupedContentRouter);
 mainRouter.use("/subscriptions", subscriptionRouter);
+mainRouter.use("/subscription-requests", subscriptionRequestRouter);
 mainRouter.use("/files", fileRouter);
