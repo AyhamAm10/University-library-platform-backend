@@ -115,9 +115,11 @@ export class StudentAuthController {
 
   async logout(req: Request, res: Response, next: NextFunction) {
     try {
+      const service = new StudentAuthService();
+      const result = await service.logout(req.student!.id);
       return res
         .status(HttpStatusCode.OK)
-        .json(ApiResponse.success({}, "تم تسجيل الخروج بنجاح"));
+        .json(ApiResponse.success(result, "تم تسجيل الخروج بنجاح"));
     } catch (error) {
       next(error);
     }

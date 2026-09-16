@@ -184,7 +184,7 @@ export class StudentAuthService extends RepoService<Student> {
 
     // Generate tokens
     const accessToken = this.generateAccessToken(updated.id, updated.libraryId, dto.deviceId);
-    const refreshToken = this.generateRefreshToken(updated.id, dto.deviceId);
+    const refreshToken = this.generateRefreshToken(updated.id, dto.deviceId, (updated as any).tokenVersion ?? 0);
 
     // Resolve active time period
     const periodService = new TimePeriodService({ libraryId: updated.libraryId });
@@ -243,7 +243,7 @@ export class StudentAuthService extends RepoService<Student> {
     }
 
     const accessToken = this.generateAccessToken(currentStudent.id, currentStudent.libraryId, dto.deviceId);
-    const refreshToken = this.generateRefreshToken(currentStudent.id, dto.deviceId);
+    const refreshToken = this.generateRefreshToken(currentStudent.id, dto.deviceId, (currentStudent as any).tokenVersion ?? 0);
 
     // Resolve active period for student's library
     const periodService = new TimePeriodService({ libraryId: currentStudent.libraryId });
@@ -284,17 +284,37 @@ export class StudentAuthService extends RepoService<Student> {
       throw new ForbiddenError("تم تعطيل هذا الحساب، يرجى مراجعة إدارة المنصة");
     }
 
+    // Invalidate if tokenVersion in payload does not match current student tokenVersion in DB
+    if (
+      decoded.tokenVersion !== undefined &&
+      (student as any).tokenVersion !== undefined &&
+      decoded.tokenVersion !== (student as any).tokenVersion
+    ) {
+      throw new UnauthorizedError("جلسة الدخول تم إنهاؤها أو إبطالها، يرجى تسجيل الدخول من جديد");
+    }
+
     if (student!.boundDeviceId && student!.boundDeviceId !== dto.deviceId) {
       throw new ForbiddenError("هذا الحساب مستخدم على جهاز آخر بالفعل");
     }
 
     const newAccessToken = this.generateAccessToken(student!.id, student!.libraryId, dto.deviceId);
-    const newRefreshToken = this.generateRefreshToken(student!.id, dto.deviceId);
+    const newRefreshToken = this.generateRefreshToken(student!.id, dto.deviceId, (student as any).tokenVersion ?? 0);
 
     return {
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
     };
+  }
+
+  /**
+   * Revoke current student session by incrementing tokenVersion in DB.
+   */
+  async logout(studentId: string) {
+    await this.model.update({
+      where: { id: studentId },
+      data: { tokenVersion: { increment: 1 } },
+    });
+    return { success: true, message: "تم تسجيل الخروج بنجاح" };
   }
 
   /**
@@ -364,9 +384,9 @@ export class StudentAuthService extends RepoService<Student> {
     return jwt.sign(payload, Environment.JWT_ACCESS_SECRET, { expiresIn: "1h" });
   }
 
-  private generateRefreshToken(studentId: string, deviceId: string): string {
+  private generateRefreshToken(studentId: string, deviceId: string, tokenVersion: number = 0): string {
     return jwt.sign(
-      { studentId, deviceId, role: "STUDENT" },
+      { studentId, deviceId, role: "STUDENT", tokenVersion },
       Environment.JWT_REFRESH_SECRET,
       { expiresIn: "30d" }
     );
