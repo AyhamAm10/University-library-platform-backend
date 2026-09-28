@@ -16,6 +16,7 @@ import { subscriptionRouter } from "./subscription.route";
 import { subscriptionRequestRouter } from "./subscription-request.route";
 import { groupedContentRouter } from "./grouped-content.route";
 import { fileRouter } from "./file.route";
+import { complaintRouter } from "./complaint.route";
 
 export const mainRouter = Router();
 
@@ -40,3 +41,4 @@ mainRouter.use("/content/grouped", groupedContentRouter);
 mainRouter.use("/subscriptions", subscriptionRouter);
 mainRouter.use("/subscription-requests", subscriptionRequestRouter);
 mainRouter.use("/files", fileRouter);
+mainRouter.use("/complaints", complaintRouter);
