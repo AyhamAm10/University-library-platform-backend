@@ -27,11 +27,11 @@ coverage/
 .nyc_output/
 
 # Temporary / Scratch files
-scratch/
-tmp/
-temp/
-storage/
-.agents/
+/scratch/
+/tmp/
+/temp/
+/storage/
+/.agents/
 # OS / Editor files
 .DS_Store
 Thumbs.db
