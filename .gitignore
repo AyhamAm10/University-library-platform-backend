@@ -31,7 +31,7 @@ scratch/
 tmp/
 temp/
 storage/
-
+.agents/
 # OS / Editor files
 .DS_Store
 Thumbs.db
