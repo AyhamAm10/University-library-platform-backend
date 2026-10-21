@@ -7,6 +7,7 @@ import { logger } from "./logging/logger";
 import { mainRouter } from "./routes";
 import { errorHandler } from "./common/errors/error.handler";
 import { prisma } from "./config/prisma";
+import { bootstrapSuperAdmin } from "./config/bootstrap";
 
 import path from "path";
 
@@ -63,6 +64,7 @@ if (process.env.NODE_ENV !== "test") {
     try {
       await prisma.$connect();
       logger.info("Prisma connected to PostgreSQL successfully");
+      await bootstrapSuperAdmin();
     } catch (err) {
       logger.error("Failed to connect to database:", err);
     }
