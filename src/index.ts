@@ -43,7 +43,7 @@ app.use(cookieParser());
 app.set("query parser", (str: string) => qs.parse(str));
 
 // Serve static assets (such as local PDF.js bundle)
-app.use("/static", express.static(path.resolve(process.cwd(), "public")));
+app.use("/static", express.static(path.resolve(__dirname, "../public")));
 
 // Root healthcheck
 app.get("/", (req, res) => {
