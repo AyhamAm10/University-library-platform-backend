@@ -117,10 +117,6 @@ export class StudentAuthService extends RepoService<Student> {
     // 3. Generate unique 6-digit studentCode
     const studentCode = await this.generateUniqueStudentCode();
 
-    // 4. Generate 6-digit numeric activation code with 15-minute expiration
-    const activationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const activationExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
-
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
     const student = await this.create({
@@ -132,16 +128,15 @@ export class StudentAuthService extends RepoService<Student> {
       dateOfBirth: new Date(dto.dateOfBirth),
       phone: dto.phone.trim(),
       passwordHash,
-      isActive: false, // Inactive until device activation
-      activationCode,
-      activationExpiresAt,
+      isActive: false, // Inactive until approved by library admin
+      activationCode: null,
+      activationExpiresAt: null,
     });
 
     return {
       student: this.sanitizeStudent(student),
       requiresActivation: true,
-      activationCode, // Returned for transparent activation flow
-      message: "تم إنشاء الحساب بنجاح، يرجى تفعيل الحساب لربطه بهذا الجهاز",
+      message: "تم إنشاء الحساب بنجاح، بانتظار موافقة إدارة المكتبة لتفعيل حسابك",
     };
   }
 
