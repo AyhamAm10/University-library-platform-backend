@@ -13,7 +13,7 @@ export class Ensure {
     this.lang = lang;
   }
 
-  static exists(value: any, entity: string, customMessage?: string) {
+  static exists<T>(value: T, entity: string, customMessage?: string): asserts value is NonNullable<T> {
     if (!value) {
       throw new NotFoundError(
         customMessage || ErrorMessages.generateErrorMessage(entity, "not found", this.lang)

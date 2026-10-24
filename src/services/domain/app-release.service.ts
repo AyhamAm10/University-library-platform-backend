@@ -65,7 +65,7 @@ export class AppReleaseService extends RepoService<AppRelease> {
     }
 
     // 3. Mark all previous releases as inactive
-    await (prisma as any).appRelease.updateMany({
+    await prisma.appRelease.updateMany({
       where: { isActive: true },
       data: { isActive: false },
     });
@@ -90,7 +90,7 @@ export class AppReleaseService extends RepoService<AppRelease> {
    * Get the current active release for the platform
    */
   async getActiveRelease() {
-    const active = await (prisma as any).appRelease.findFirst({
+    const active = await prisma.appRelease.findFirst({
       where: { isActive: true },
       orderBy: { versionCode: "desc" },
     });
@@ -146,7 +146,7 @@ export class AppReleaseService extends RepoService<AppRelease> {
    * Get file information to stream APK download to mobile app
    */
   async getDownloadStream() {
-    const active = await (prisma as any).appRelease.findFirst({
+    const active = await prisma.appRelease.findFirst({
       where: { isActive: true },
       orderBy: { versionCode: "desc" },
     });
@@ -159,7 +159,7 @@ export class AppReleaseService extends RepoService<AppRelease> {
     }
 
     // Increment download counter asynchronously
-    (prisma as any).appRelease
+    prisma.appRelease
       .update({
         where: { id: active.id },
         data: { downloadCount: { increment: 1 } },
@@ -179,7 +179,7 @@ export class AppReleaseService extends RepoService<AppRelease> {
    * Get all releases history (for Super Admin dashboard)
    */
   async getReleasesHistory() {
-    const releases = await (prisma as any).appRelease.findMany({
+    const releases = await prisma.appRelease.findMany({
       orderBy: { createdAt: "desc" },
     });
 
