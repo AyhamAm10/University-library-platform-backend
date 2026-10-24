@@ -43,30 +43,34 @@ jobs:
           port: 22
           script_stop: true
           script: |
-            # 1. Ensure NVM / Node / PM2 environments are loaded in non-interactive shell
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            [ -s "$HOME/.bashrc" ] && \. "$HOME/.bashrc"
+            echo "=== Step 1: Loading environment ==="
+            if [ -s "$HOME/.nvm/nvm.sh" ]; then
+              . "$HOME/.nvm/nvm.sh"
+            fi
+            if [ -s "$HOME/.bashrc" ]; then
+              . "$HOME/.bashrc"
+            fi
             export PATH="$PATH:/usr/local/bin:/usr/bin:/bin"
 
-            echo "=== Step 1: Navigating to project directory ==="
+            echo "=== Step 2: Navigating to project directory ==="
             cd /var/www/zien/University-library-platform-backend
 
-            echo "=== Step 2: Pulling latest changes from main ==="
-            git pull origin main
+            echo "=== Step 3: Fetching and resetting to origin/main ==="
+            git fetch origin main
+            git reset --hard origin/main
 
-            echo "=== Step 3: Installing dependencies ==="
-            npm install
+            echo "=== Step 4: Installing dependencies ==="
+            npm install --prefer-offline --no-audit
 
-            echo "=== Step 4: Syncing Prisma Schema with Database ==="
+            echo "=== Step 5: Syncing Prisma Schema with Database ==="
             npx prisma generate
-            npx prisma db push
+            npx prisma db push --accept-data-loss
 
-            echo "=== Step 5: Building backend distribution ==="
+            echo "=== Step 6: Building backend distribution ==="
             npm run build
 
-            echo "=== Step 6: Restarting server via PM2 ==="
-            pm2 reload zien-backend || pm2 restart zien-backend
+            echo "=== Step 7: Restarting server via PM2 ==="
+            pm2 restart zien-backend || pm2 start dist/index.js --name zien-backend
             pm2 save
 
             echo "=== Deployment Successfully Finished! ==="
