@@ -479,3 +479,22 @@ model Complaint {
   @@index([studentId])
   @@map("complaints")
 }
+
+model AppRelease {
+  id            String   @id @default(uuid())
+  version       String
+  versionCode   Int
+  releaseNotes  String?
+  fileName      String
+  storageKey    String
+  fileSize      BigInt
+  mimeType      String   @default("application/vnd.android.package-archive")
+  isActive      Boolean  @default(true)
+  downloadCount Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([versionCode])
+  @@map("app_releases")
+}
