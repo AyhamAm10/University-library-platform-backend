@@ -34,6 +34,7 @@ export class StoredFileService extends TenantService<StoredFile> {
         lectures: { select: { id: true } },
         summaries: { select: { id: true } },
         questions: { select: { id: true } },
+        goldMaterials: { select: { id: true } },
       },
     });
   }

@@ -43,36 +43,39 @@ export class SubscriptionService extends TenantService<Subscription> {
     const subject = await this.subjectService.findById(dto.subjectId);
     Ensure.exists(subject, "subject", "المادة الدراسية غير موجودة في هذه المكتبة");
 
-    // 3. Check if active subscription already exists for this exact item in the active period
+    // 3. Check feature-specific requirements
+    if (dto.featureType !== FeatureType.LECTURES && !dto.materialId) {
+      throw new BadRequestError("يجب تحديد العنصر/الملف المراد الاشتراك به لهذه الخدمة التعليمية");
+    }
+
+    const effectiveMaterialId =
+      dto.featureType === FeatureType.LECTURES ? null : (dto.materialId || null);
+
+    // 4. Check if active subscription already exists for this exact item in the active period
     const whereQuery: any = {
       studentId: dto.studentId,
       subjectId: dto.subjectId,
       featureType: dto.featureType as FeatureType,
+      materialId: effectiveMaterialId,
       status: SubscriptionStatus.ACTIVE,
     };
-
-    if (dto.materialId) {
-      whereQuery.materialId = dto.materialId;
-    } else if (dto.featureType === FeatureType.LECTURES) {
-      whereQuery.materialId = null;
-    }
 
     const existing = await this.findOne(whereQuery);
 
     if (existing) {
       throw new BadRequestError(
-        dto.materialId
+        effectiveMaterialId
           ? "الطالب مشترك بالفعل في هذا الملف/العنصر المحدد في هذه الفترة"
-          : "الطالب مشترك بالفعل في هذه الخدمة التعليمية لهذه المادة في هذه الفترة"
+          : "الطالب مشترك بالفعل في محاضرات هذه المادة في هذه الفترة"
       );
     }
 
-    // 4. Create subscription (TenantService automatically injects libraryId & timePeriodId)
+    // 5. Create subscription (TenantService automatically injects libraryId & timePeriodId)
     const subscription = await this.create({
       studentId: dto.studentId,
       subjectId: dto.subjectId,
       featureType: dto.featureType as FeatureType,
-      materialId: dto.materialId || null,
+      materialId: effectiveMaterialId,
       status: SubscriptionStatus.ACTIVE,
       subscribedAt: new Date(),
     });
@@ -194,18 +197,27 @@ export class SubscriptionService extends TenantService<Subscription> {
   async checkStudentFeatureAccess(studentId: string, subjectId: string, featureType: FeatureType, materialId?: string): Promise<boolean> {
     if (!this.timePeriodId) return false;
 
-    const where: any = {
+    if (featureType === FeatureType.LECTURES) {
+      return await this.exists({
+        studentId,
+        subjectId,
+        featureType: FeatureType.LECTURES,
+        materialId: null,
+        status: SubscriptionStatus.ACTIVE,
+      });
+    }
+
+    if (!materialId) {
+      return false;
+    }
+
+    return await this.exists({
       studentId,
       subjectId,
       featureType,
+      materialId,
       status: SubscriptionStatus.ACTIVE,
-    };
-
-    if (materialId) {
-      where.materialId = materialId;
-    }
-
-    return await this.exists(where);
+    });
   }
 
   async getStudentActiveSubscribedSubjectIds(studentId: string, featureType: FeatureType): Promise<string[]> {

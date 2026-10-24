@@ -48,52 +48,52 @@ export class FileController {
             file.subjectId,
             FeatureType.LECTURES
           );
+        } else if (file.featureType === FeatureType.GOLD_PAPERS) {
+          // Gold papers subscription is strictly per-material
+          const goldIds = (file as any).goldMaterials?.map((g: any) => g.id) || [];
+          for (const gId of goldIds) {
+            if (
+              await subscriptionService.checkStudentFeatureAccess(
+                student.id,
+                file.subjectId,
+                FeatureType.GOLD_PAPERS,
+                gId
+              )
+            ) {
+              isAuthorized = true;
+              break;
+            }
+          }
         } else if (file.featureType === FeatureType.SUMMARIES) {
-          // Summary subscription can be subject-wide or per-material
-          isAuthorized = await subscriptionService.checkStudentFeatureAccess(
-            student.id,
-            file.subjectId,
-            FeatureType.SUMMARIES
-          );
-
-          if (!isAuthorized) {
-            const summaryIds = (file as any).summaries?.map((s: any) => s.id) || [];
-            for (const sId of summaryIds) {
-              if (
-                await subscriptionService.checkStudentFeatureAccess(
-                  student.id,
-                  file.subjectId,
-                  FeatureType.SUMMARIES,
-                  sId
-                )
-              ) {
-                isAuthorized = true;
-                break;
-              }
+          // Summary subscription is strictly per-material
+          const summaryIds = (file as any).summaries?.map((s: any) => s.id) || [];
+          for (const sId of summaryIds) {
+            if (
+              await subscriptionService.checkStudentFeatureAccess(
+                student.id,
+                file.subjectId,
+                FeatureType.SUMMARIES,
+                sId
+              )
+            ) {
+              isAuthorized = true;
+              break;
             }
           }
         } else if (file.featureType === FeatureType.QUESTION_BANK) {
-          // Course questions subscription can be subject-wide or per-item
-          isAuthorized = await subscriptionService.checkStudentFeatureAccess(
-            student.id,
-            file.subjectId,
-            FeatureType.QUESTION_BANK
-          );
-
-          if (!isAuthorized) {
-            const questionIds = (file as any).questions?.map((q: any) => q.id) || [];
-            for (const qId of questionIds) {
-              if (
-                await subscriptionService.checkStudentFeatureAccess(
-                  student.id,
-                  file.subjectId,
-                  FeatureType.QUESTION_BANK,
-                  qId
-                )
-              ) {
-                isAuthorized = true;
-                break;
-              }
+          // Question bank subscription is strictly per-item
+          const questionIds = (file as any).questions?.map((q: any) => q.id) || [];
+          for (const qId of questionIds) {
+            if (
+              await subscriptionService.checkStudentFeatureAccess(
+                student.id,
+                file.subjectId,
+                FeatureType.QUESTION_BANK,
+                qId
+              )
+            ) {
+              isAuthorized = true;
+              break;
             }
           }
         }

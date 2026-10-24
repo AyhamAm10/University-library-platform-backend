@@ -59,22 +59,30 @@ export class SubscriptionRequestService extends TenantService<SubscriptionReques
     const subject = await this.subjectService.findById(dto.subjectId);
     Ensure.exists(subject, "subject", "المادة الدراسية غير موجودة");
 
+    // 0. Validate feature-specific requirements
+    if (dto.featureType !== FeatureType.LECTURES && !dto.materialId) {
+      throw new BadRequestError("يجب تحديد العنصر/الملف المراد تقديم طلب اشتراك به لهذه الخدمة");
+    }
+
+    const effectiveMaterialId =
+      dto.featureType === FeatureType.LECTURES ? null : (dto.materialId || null);
+
     // 1. Check if student is already actively subscribed
     const whereSub: any = {
       studentId,
       subjectId: dto.subjectId,
       featureType: dto.featureType as FeatureType,
+      materialId: effectiveMaterialId,
       status: SubscriptionStatus.ACTIVE,
     };
-    if (dto.materialId) {
-      whereSub.materialId = dto.materialId;
-    } else if (dto.featureType === FeatureType.LECTURES) {
-      whereSub.materialId = null;
-    }
 
     const existingSub = await this.subscriptionService.findOne(whereSub);
     if (existingSub) {
-      throw new BadRequestError("أنت مشترك بالفعل في هذه الخدمة التعليمية لهذه المادة");
+      throw new BadRequestError(
+        effectiveMaterialId
+          ? "أنت مشترك بالفعل في هذا العنصر المحدد"
+          : "أنت مشترك بالفعل في محاضرات هذه المادة"
+      );
     }
 
     // 2. Check if student already has a pending request for this item
@@ -82,13 +90,9 @@ export class SubscriptionRequestService extends TenantService<SubscriptionReques
       studentId,
       subjectId: dto.subjectId,
       featureType: dto.featureType as FeatureType,
+      materialId: effectiveMaterialId,
       status: RequestStatus.PENDING,
     };
-    if (dto.materialId) {
-      whereReq.materialId = dto.materialId;
-    } else {
-      whereReq.materialId = null;
-    }
 
     const existingReq = await this.findOne(whereReq);
     if (existingReq) {
@@ -100,7 +104,7 @@ export class SubscriptionRequestService extends TenantService<SubscriptionReques
       studentId,
       subjectId: dto.subjectId,
       featureType: dto.featureType as FeatureType,
-      materialId: dto.materialId || null,
+      materialId: effectiveMaterialId,
       status: RequestStatus.PENDING,
       notes: dto.notes || null,
     });
@@ -155,12 +159,16 @@ export class SubscriptionRequestService extends TenantService<SubscriptionReques
     let materialMap: Record<string, { id: string; title: string }> = {};
 
     if (materialIds.length > 0) {
-      const [golds, summaries, questions] = await Promise.all([
+      const [golds, summaries, courses, questions] = await Promise.all([
         (prisma as any).goldMaterial.findMany({
           where: { id: { in: materialIds } },
           select: { id: true, title: true },
         }),
         (prisma as any).summaryMaterial.findMany({
+          where: { id: { in: materialIds } },
+          select: { id: true, title: true },
+        }),
+        (prisma as any).course.findMany({
           where: { id: { in: materialIds } },
           select: { id: true, title: true },
         }),
@@ -172,6 +180,7 @@ export class SubscriptionRequestService extends TenantService<SubscriptionReques
 
       golds.forEach((g: any) => { materialMap[g.id] = { id: g.id, title: g.title }; });
       summaries.forEach((s: any) => { materialMap[s.id] = { id: s.id, title: s.title }; });
+      courses.forEach((c: any) => { materialMap[c.id] = { id: c.id, title: c.title }; });
       questions.forEach((q: any) => { materialMap[q.id] = { id: q.id, title: q.title || q.questionText }; });
     }
 

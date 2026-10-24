@@ -166,6 +166,16 @@ export class GroupedContentService extends TenantService<any> {
             timePeriodId: this.timePeriodId,
             subjectId: { in: subjectIds },
           },
+          include: {
+            file: {
+              select: {
+                id: true,
+                originalName: true,
+                size: true,
+                mimeType: true,
+              },
+            },
+          },
           orderBy: { createdAt: "desc" },
         });
         break;
@@ -187,6 +197,20 @@ export class GroupedContentService extends TenantService<any> {
                 createdAt: true,
               },
             },
+          },
+          orderBy: { createdAt: "desc" },
+        });
+        break;
+
+      case FeatureType.COURSES:
+        allItems = await prisma.course.findMany({
+          where: {
+            libraryId: this.libraryId,
+            timePeriodId: this.timePeriodId,
+            subjectId: { in: subjectIds },
+          },
+          include: {
+            lessons: true,
           },
           orderBy: { createdAt: "desc" },
         });
@@ -231,9 +255,6 @@ export class GroupedContentService extends TenantService<any> {
 
     for (const sub of subjects) {
       const subjectItems = itemsBySubject.get(sub.id) || [];
-      const isSubscribedToSubject = activeSubscribedSubjectIds.has(sub.id);
-      const hasPendingReq = pendingSubjectRequestMap.has(sub.id);
-      const pendingReqId = pendingSubjectRequestMap.get(sub.id) || null;
 
       if (!studentId) {
         // For admin: put all into subscribed list with all items
@@ -250,20 +271,48 @@ export class GroupedContentService extends TenantService<any> {
         continue;
       }
 
-      // If user is subscribed to the entire subject
-      if (isSubscribedToSubject) {
-        subscribed.push({
-          subjectId: sub.id,
-          subjectName: sub.name,
-          subjectCode: sub.code,
-          departmentName: sub.department?.name || null,
-          isSubscribed: true,
-          hasPendingRequest: false,
-          pendingRequestId: null,
-          items: subjectItems,
-        });
+      // Feature-specific subscription architecture:
+      // 1. LECTURES: Subscription is subject-wide (covers all present and future lectures of this subject)
+      if (featureType === FeatureType.LECTURES) {
+        const isSubscribedToSubject = activeSubscribedSubjectIds.has(sub.id);
+        const hasPendingReq = pendingSubjectRequestMap.has(sub.id);
+        const pendingReqId = pendingSubjectRequestMap.get(sub.id) || null;
+
+        if (isSubscribedToSubject) {
+          subscribed.push({
+            subjectId: sub.id,
+            subjectName: sub.name,
+            subjectCode: sub.code,
+            departmentName: sub.department?.name || null,
+            isSubscribed: true,
+            hasPendingRequest: false,
+            pendingRequestId: null,
+            items: subjectItems,
+          });
+        } else {
+          // Unsubscribed lectures subject
+          const sanitizedItems = subjectItems.map((item) => ({
+            ...item,
+            fileId: null,
+            file: item.file ? { originalName: item.file.originalName, size: item.file.size } : null,
+            hasPendingRequest: hasPendingReq,
+            pendingRequestId: pendingReqId,
+          }));
+
+          unsubscribed.push({
+            subjectId: sub.id,
+            subjectName: sub.name,
+            subjectCode: sub.code,
+            departmentName: sub.department?.name || null,
+            isSubscribed: false,
+            hasPendingRequest: hasPendingReq,
+            pendingRequestId: pendingReqId,
+            items: sanitizedItems,
+          });
+        }
       } else {
-        // Check if there are material-specific subscriptions within this subject (for GOLD, SUMMARIES, QUESTIONS)
+        // 2. OTHER FEATURES (SUMMARIES, GOLD_PAPERS, COURSES, QUESTION_BANK):
+        // Subscription is STRICTLY per-item (materialId). Subscribing to one item never grants access to others.
         const subscribedMaterials = subjectItems.filter((item) =>
           activeSubscribedMaterialIds.has(item.id)
         );
@@ -271,6 +320,7 @@ export class GroupedContentService extends TenantService<any> {
           (item) => !activeSubscribedMaterialIds.has(item.id)
         );
 
+        // Subscribed tab: contains subjects that have at least one subscribed material
         if (subscribedMaterials.length > 0) {
           subscribed.push({
             subjectId: sub.id,
@@ -284,26 +334,27 @@ export class GroupedContentService extends TenantService<any> {
           });
         }
 
-        // The subject itself or remaining items belong to unsubscribed
-        // For unsubscribed items, sanitize secure file ids so unauthorized downloads are prevented
-        const sanitizedUnsubscribedItems = unsubscribedMaterials.map((item) => ({
-          ...item,
-          fileId: null, // Don't expose fileId for unsubscribed items
-          file: item.file ? { originalName: item.file.originalName, size: item.file.size } : null,
-          hasPendingRequest: pendingMaterialRequestMap.has(item.id) || hasPendingReq,
-          pendingRequestId: pendingMaterialRequestMap.get(item.id) || pendingReqId,
-        }));
+        // Unsubscribed tab: contains subjects with remaining unsubscribed materials
+        if (unsubscribedMaterials.length > 0) {
+          const sanitizedUnsubscribedItems = unsubscribedMaterials.map((item) => ({
+            ...item,
+            fileId: null,
+            file: item.file ? { originalName: item.file.originalName, size: item.file.size } : null,
+            hasPendingRequest: pendingMaterialRequestMap.has(item.id),
+            pendingRequestId: pendingMaterialRequestMap.get(item.id) || null,
+          }));
 
-        unsubscribed.push({
-          subjectId: sub.id,
-          subjectName: sub.name,
-          subjectCode: sub.code,
-          departmentName: sub.department?.name || null,
-          isSubscribed: false,
-          hasPendingRequest: hasPendingReq,
-          pendingRequestId: pendingReqId,
-          items: sanitizedUnsubscribedItems,
-        });
+          unsubscribed.push({
+            subjectId: sub.id,
+            subjectName: sub.name,
+            subjectCode: sub.code,
+            departmentName: sub.department?.name || null,
+            isSubscribed: false,
+            hasPendingRequest: false,
+            pendingRequestId: null,
+            items: sanitizedUnsubscribedItems,
+          });
+        }
       }
     }
 

@@ -10,7 +10,11 @@ export const CreateSubscriptionSchema = yup.object({
       "نوع الخدمة التعليمية غير صالح"
     )
     .required("نوع الخدمة التعليمية مطلوب"),
-  materialId: yup.string().optional().nullable(),
+  materialId: yup.string().when("featureType", {
+    is: (val: string) => val !== "LECTURES",
+    then: (schema) => schema.required("معرف العنصر/الملف مطلوب للاشتراك في هذه الخدمة"),
+    otherwise: (schema) => schema.optional().nullable(),
+  }),
 });
 
 export type CreateSubscriptionDto = yup.InferType<typeof CreateSubscriptionSchema>;
