@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { DepartmentController } from "../controllers/department.controller";
+import { AcademicYearController } from "../controllers/academic-year.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { tenantMiddleware } from "../middlewares/tenant.middleware";
 import { checkRole } from "../middlewares/role.middleware";
@@ -7,12 +8,25 @@ import { UserRole } from "@prisma/client";
 
 export const departmentRouter = Router();
 const controller = new DepartmentController();
+const academicYearController = new AcademicYearController();
 
 departmentRouter.use(authMiddleware, tenantMiddleware);
 
 departmentRouter.get("/", (req, res, next) => {
   controller.getDepartments(req, res, next);
 });
+
+departmentRouter.get("/:departmentId/academic-years", (req, res, next) => {
+  academicYearController.getAcademicYears(req, res, next);
+});
+
+departmentRouter.post(
+  "/:departmentId/academic-years",
+  checkRole([UserRole.LIBRARY_ADMIN, UserRole.SUPER_ADMIN]),
+  (req, res, next) => {
+    academicYearController.createAcademicYear(req, res, next);
+  }
+);
 
 departmentRouter.post("/", checkRole([UserRole.LIBRARY_ADMIN, UserRole.SUPER_ADMIN]), (req, res, next) => {
   controller.createDepartment(req, res, next);

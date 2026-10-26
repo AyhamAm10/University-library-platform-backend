@@ -5,6 +5,7 @@ import { BadRequestError } from "../../common/errors/http.error";
 import { TenantContext } from "../../types/tenant.context";
 import { CreateBranchDto, UpdateBranchDto } from "../../dto/branch.dto";
 import { StudentService } from "./student.service";
+import { prisma } from "../../config/prisma";
 
 export class BranchService extends TenantService<Branch> {
   private _studentService?: StudentService;
@@ -46,6 +47,13 @@ export class BranchService extends TenantService<Branch> {
       throw new BadRequestError(`لا يمكن حذف الفرع لاحتوائه على ${studentCount} من الطلاب المسجلين`);
     }
 
+    const academicYearsCount = await prisma.academicYear.count({
+      where: { libraryId: this.libraryId, branchId: id },
+    });
+    if (academicYearsCount > 0) {
+      throw new BadRequestError(`لا يمكن حذف الفرع لاحتوائه على ${academicYearsCount} سنة دراسية مضافة. يرجى حذف السنوات التابعة له أولاً.`);
+    }
+
     await this.delete(id);
   }
 
@@ -59,6 +67,7 @@ export class BranchService extends TenantService<Branch> {
           select: {
             students: true,
             departments: true,
+            academicYears: true,
           },
         },
       },

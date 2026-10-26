@@ -1,4 +1,4 @@
-import { TenantService } from "../tenant.service";
+import { AcademicContentService } from "../academic-content.service";
 import { Lecture, FeatureType, SubscriptionStatus } from "@prisma/client";
 import { TenantContext } from "../../types/tenant.context";
 import { CreateLectureDto, UpdateLectureDto } from "../../dto/lecture.dto";
@@ -10,7 +10,7 @@ import { NotificationService } from "./notification.service";
 import { StoredFileService } from "./stored-file.service";
 import { FileStorageService } from "../storage/file-storage.service";
 
-export class LectureService extends TenantService<Lecture> {
+export class LectureService extends AcademicContentService<Lecture> {
   private _subjectService?: SubjectService;
   private _subscriptionService?: SubscriptionService;
   private _notificationService?: NotificationService;
@@ -178,7 +178,7 @@ export class LectureService extends TenantService<Lecture> {
     return { success: true };
   }
 
-  async fetchLectures(subjectId?: string) {
+  async fetchLectures(subjectId?: string, yearLevel?: number) {
     const where: any = {};
 
     // For students: enforce active subscription for FeatureType.LECTURES
@@ -188,7 +188,6 @@ export class LectureService extends TenantService<Lecture> {
         FeatureType.LECTURES
       );
 
-      // If student has no active subscriptions for lectures, return empty immediately
       if (subscribedSubjectIds.length === 0) {
         return [];
       }
@@ -198,17 +197,40 @@ export class LectureService extends TenantService<Lecture> {
           return [];
         }
         where.subjectId = subjectId;
+      } else if (yearLevel !== undefined) {
+        // فلترة بالسنة الدراسية: جلب مواد السنة المحددة من القسم الطالب
+        const { departmentId, branchId } = await this.resolveStudentAcademicContext();
+        if (departmentId) {
+          const academicSubjectIds = await this.resolveAcademicSubjectIds({
+            departmentId,
+            branchId,
+            yearLevel,
+          });
+          // تقاطع مع المواد المشترك بها
+          const intersection = academicSubjectIds.filter((id) =>
+            subscribedSubjectIds.includes(id)
+          );
+          where.subjectId = { in: intersection };
+        } else {
+          where.subjectId = { in: subscribedSubjectIds };
+        }
       } else {
         where.subjectId = { in: subscribedSubjectIds };
       }
-    } else if (subjectId) {
-      where.subjectId = subjectId;
+    } else {
+      // Admin: فلترة مباشرة
+      if (subjectId) {
+        where.subjectId = subjectId;
+      } else if (yearLevel !== undefined) {
+        const academicSubjectIds = await this.resolveAcademicSubjectIds({ yearLevel });
+        where.subjectId = { in: academicSubjectIds };
+      }
     }
 
     return await this.getAll({
       where,
       include: {
-        subject: { select: { id: true, name: true, code: true } },
+        subject: { select: { id: true, name: true, code: true, yearLevel: true } },
         file: {
           select: {
             id: true,

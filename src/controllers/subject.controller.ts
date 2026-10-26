@@ -37,12 +37,16 @@ export class SubjectController {
 
   async getSubjects(req: Request, res: Response, next: NextFunction) {
     try {
-      const { search, page, limit } = req.query;
+      const { search, page, limit, departmentId, branchId, academicYearId, yearLevel } = req.query;
       const service = new SubjectService(req.tenant!);
       const result = await service.fetchSubjects({
         search: search as string,
         page: page ? Number(page) : undefined,
         limit: limit ? Number(limit) : undefined,
+        departmentId: departmentId as string,
+        branchId: branchId as string,
+        academicYearId: academicYearId as string,
+        yearLevel: yearLevel ? Number(yearLevel) : undefined,
       });
 
       return res.status(HttpStatusCode.OK).json(

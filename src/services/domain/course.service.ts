@@ -1,4 +1,4 @@
-import { TenantService } from "../tenant.service";
+import { AcademicContentService } from "../academic-content.service";
 import { Course, FeatureType } from "@prisma/client";
 import { TenantContext } from "../../types/tenant.context";
 import { CreateCourseDto, AddCourseLessonDto } from "../../dto/course.dto";
@@ -8,7 +8,7 @@ import { SubjectService } from "./subject.service";
 import { CourseLessonService } from "./course-lesson.service";
 import { SubscriptionService } from "./subscription.service";
 
-export class CourseService extends TenantService<Course> {
+export class CourseService extends AcademicContentService<Course> {
   private _subjectService?: SubjectService;
   private _courseLessonService?: CourseLessonService;
   private _subscriptionService?: SubscriptionService;
@@ -61,7 +61,7 @@ export class CourseService extends TenantService<Course> {
     return await this.courseLessonService.createLesson(courseId, dto);
   }
 
-  async fetchCourses(subjectId?: string) {
+  async fetchCourses(subjectId?: string, yearLevel?: number) {
     const where: any = {};
 
     // For students: enforce active subscription per specific course / material!
@@ -78,14 +78,31 @@ export class CourseService extends TenantService<Course> {
       }
 
       where.id = { in: subscribedMaterialIds };
-    } else if (subjectId) {
-      where.subjectId = subjectId;
+
+      if (yearLevel !== undefined) {
+        const { departmentId, branchId } = await this.resolveStudentAcademicContext();
+        if (departmentId) {
+          const academicSubjectIds = await this.resolveAcademicSubjectIds({
+            departmentId,
+            branchId,
+            yearLevel,
+          });
+          where.subjectId = { in: academicSubjectIds };
+        }
+      }
+    } else {
+      if (subjectId) {
+        where.subjectId = subjectId;
+      } else if (yearLevel !== undefined) {
+        const academicSubjectIds = await this.resolveAcademicSubjectIds({ yearLevel });
+        where.subjectId = { in: academicSubjectIds };
+      }
     }
 
     return await this.getAll({
       where,
       include: {
-        subject: { select: { id: true, name: true, code: true } },
+        subject: { select: { id: true, name: true, code: true, yearLevel: true } },
         lessons: { orderBy: { orderIndex: "asc" } },
         _count: { select: { lessons: true } },
       },

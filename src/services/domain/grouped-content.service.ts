@@ -8,6 +8,9 @@ export interface GroupedSubjectItem {
   subjectId: string;
   subjectName: string;
   subjectCode: string | null;
+  academicYearId?: string | null;
+  academicYearName?: string | null;
+  yearLevel: number;
   departmentName?: string | null;
   isSubscribed: boolean;
   hasPendingRequest: boolean;
@@ -26,7 +29,11 @@ export class GroupedContentService extends TenantService<any> {
     super("subject", "subject", tenantContext, false);
   }
 
-  async getGroupedContent(featureType: FeatureType): Promise<GroupedContentResponse> {
+  async getGroupedContent(
+    featureType: FeatureType,
+    academicYearId?: string,
+    yearLevel?: number
+  ): Promise<GroupedContentResponse> {
     if (!this.timePeriodId) {
       return { featureType, subscribed: [], unsubscribed: [] };
     }
@@ -35,46 +42,54 @@ export class GroupedContentService extends TenantService<any> {
 
     let studentBranchId: string | null = null;
     let studentDepartmentId: string | null = null;
+    let studentAcademicYearId: string | null = null;
 
     if (studentId) {
       const student = await prisma.student.findUnique({
         where: { id: studentId },
-        select: { branchId: true, departmentId: true },
+        select: { branchId: true, departmentId: true, academicYearId: true },
       });
       if (student) {
         studentBranchId = student.branchId;
         studentDepartmentId = student.departmentId;
+        studentAcademicYearId = student.academicYearId;
       }
     }
 
-    // Find subjects relevant to this student's branch/department (or all in library if admin)
+    // Find subjects strictly relevant to this student's department/branch (or all in library if admin)
     const subjectWhere: any = {
       libraryId: this.libraryId,
       isActive: true,
     };
 
     if (studentId) {
-      const orConditions: any[] = [];
       if (studentDepartmentId) {
-        orConditions.push({ departmentId: studentDepartmentId });
+        subjectWhere.departmentId = studentDepartmentId;
+        if (studentBranchId) {
+          subjectWhere.OR = [
+            { branchId: studentBranchId },
+            { branchId: null },
+          ];
+        }
+      } else {
+        // Fallback for students with no assigned department
+        subjectWhere.departmentId = null;
       }
-      if (studentBranchId) {
-        orConditions.push({ branchId: studentBranchId });
-      }
-      // General subjects with no branch/department
-      orConditions.push({ branchId: null, departmentId: null });
+    }
 
-      if (orConditions.length > 0) {
-        subjectWhere.OR = orConditions;
-      }
+    if (academicYearId) {
+      subjectWhere.academicYearId = academicYearId;
+    } else if (yearLevel !== undefined) {
+      subjectWhere.yearLevel = yearLevel;
     }
 
     const subjects = await prisma.subject.findMany({
       where: subjectWhere,
       include: {
         department: { select: { id: true, name: true } },
+        academicYear: { select: { id: true, name: true, yearOrder: true } },
       },
-      orderBy: { name: "asc" },
+      orderBy: [{ academicYear: { yearOrder: "asc" } }, { name: "asc" }],
     });
 
     if (subjects.length === 0) {
@@ -262,6 +277,9 @@ export class GroupedContentService extends TenantService<any> {
           subjectId: sub.id,
           subjectName: sub.name,
           subjectCode: sub.code,
+          academicYearId: sub.academicYearId || null,
+          academicYearName: sub.academicYear?.name || (sub.yearLevel ? `السنة ${sub.yearLevel}` : null),
+          yearLevel: sub.yearLevel || 1,
           departmentName: sub.department?.name || null,
           isSubscribed: true,
           hasPendingRequest: false,
@@ -283,6 +301,9 @@ export class GroupedContentService extends TenantService<any> {
             subjectId: sub.id,
             subjectName: sub.name,
             subjectCode: sub.code,
+            academicYearId: sub.academicYearId || null,
+            academicYearName: sub.academicYear?.name || (sub.yearLevel ? `السنة ${sub.yearLevel}` : null),
+            yearLevel: sub.yearLevel || 1,
             departmentName: sub.department?.name || null,
             isSubscribed: true,
             hasPendingRequest: false,
@@ -303,6 +324,9 @@ export class GroupedContentService extends TenantService<any> {
             subjectId: sub.id,
             subjectName: sub.name,
             subjectCode: sub.code,
+            academicYearId: sub.academicYearId || null,
+            academicYearName: sub.academicYear?.name || (sub.yearLevel ? `السنة ${sub.yearLevel}` : null),
+            yearLevel: sub.yearLevel || 1,
             departmentName: sub.department?.name || null,
             isSubscribed: false,
             hasPendingRequest: hasPendingReq,
@@ -326,6 +350,9 @@ export class GroupedContentService extends TenantService<any> {
             subjectId: sub.id,
             subjectName: sub.name,
             subjectCode: sub.code,
+            academicYearId: sub.academicYearId || null,
+            academicYearName: sub.academicYear?.name || (sub.yearLevel ? `السنة ${sub.yearLevel}` : null),
+            yearLevel: sub.yearLevel || 1,
             departmentName: sub.department?.name || null,
             isSubscribed: true,
             hasPendingRequest: false,
@@ -348,6 +375,9 @@ export class GroupedContentService extends TenantService<any> {
             subjectId: sub.id,
             subjectName: sub.name,
             subjectCode: sub.code,
+            academicYearId: sub.academicYearId || null,
+            academicYearName: sub.academicYear?.name || (sub.yearLevel ? `السنة ${sub.yearLevel}` : null),
+            yearLevel: sub.yearLevel || 1,
             departmentName: sub.department?.name || null,
             isSubscribed: false,
             hasPendingRequest: false,

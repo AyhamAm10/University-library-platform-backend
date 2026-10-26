@@ -1,4 +1,4 @@
-import { TenantService } from "../tenant.service";
+import { AcademicContentService } from "../academic-content.service";
 import { SummaryMaterial, FeatureType } from "@prisma/client";
 import { TenantContext } from "../../types/tenant.context";
 import { CreateSummaryMaterialDto, UpdateSummaryMaterialDto } from "../../dto/summary.dto";
@@ -9,7 +9,7 @@ import { SubscriptionService } from "./subscription.service";
 import { StoredFileService } from "./stored-file.service";
 import { FileStorageService } from "../storage/file-storage.service";
 
-export class SummaryService extends TenantService<SummaryMaterial> {
+export class SummaryService extends AcademicContentService<SummaryMaterial> {
   private _subjectService?: SubjectService;
   private _subscriptionService?: SubscriptionService;
   private _storedFileService?: StoredFileService;
@@ -139,10 +139,9 @@ export class SummaryService extends TenantService<SummaryMaterial> {
     return { success: true };
   }
 
-  async fetchSummaryMaterials(subjectId?: string) {
+  async fetchSummaryMaterials(subjectId?: string, yearLevel?: number) {
     const where: any = {};
 
-    // For students: enforce active subscription per specific file / material!
     if (this.tenantContext.role === "STUDENT" && this.tenantContext.userId) {
       const subscribedMaterialIds = await this.subscriptionService.getStudentActiveSubscribedMaterialIds(
         this.tenantContext.userId,
@@ -150,20 +149,36 @@ export class SummaryService extends TenantService<SummaryMaterial> {
         subjectId
       );
 
-      // If student has no active subscriptions for summaries, return empty immediately
       if (subscribedMaterialIds.length === 0) {
         return [];
       }
 
       where.id = { in: subscribedMaterialIds };
-    } else if (subjectId) {
-      where.subjectId = subjectId;
+
+      if (yearLevel !== undefined) {
+        const { departmentId, branchId } = await this.resolveStudentAcademicContext();
+        if (departmentId) {
+          const academicSubjectIds = await this.resolveAcademicSubjectIds({
+            departmentId,
+            branchId,
+            yearLevel,
+          });
+          where.subjectId = { in: academicSubjectIds };
+        }
+      }
+    } else {
+      if (subjectId) {
+        where.subjectId = subjectId;
+      } else if (yearLevel !== undefined) {
+        const academicSubjectIds = await this.resolveAcademicSubjectIds({ yearLevel });
+        where.subjectId = { in: academicSubjectIds };
+      }
     }
 
     return await this.getAll({
       where,
       include: {
-        subject: { select: { id: true, name: true, code: true } },
+        subject: { select: { id: true, name: true, code: true, yearLevel: true } },
         file: {
           select: {
             id: true,

@@ -9,7 +9,7 @@ import { BadRequestError } from "../common/errors/http.error";
 export class GroupedContentController {
   async getGroupedContent(req: Request, res: Response, next: NextFunction) {
     try {
-      const { featureType } = req.query;
+      const { featureType, yearLevel, academicYearId } = req.query;
       Ensure.exists(featureType, "نوع الخدمة التعليمية (featureType)");
 
       const validTypes = Object.values(FeatureType);
@@ -17,8 +17,13 @@ export class GroupedContentController {
         throw new BadRequestError(`نوع الخدمة التعليمية غير صالح. القيم المسموحة: ${validTypes.join(", ")}`);
       }
 
+      const parsedYearLevel = yearLevel !== undefined ? parseInt(yearLevel as string, 10) : undefined;
       const service = new GroupedContentService(req.tenant!);
-      const data = await service.getGroupedContent(featureType as FeatureType);
+      const data = await service.getGroupedContent(
+        featureType as FeatureType,
+        academicYearId ? (academicYearId as string) : undefined,
+        parsedYearLevel
+      );
 
       return res.status(HttpStatusCode.OK).json(
         ApiResponse.success(data, "المحتوى المجمع للمواد والاشتراكات")

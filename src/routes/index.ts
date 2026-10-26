@@ -18,6 +18,7 @@ import { groupedContentRouter } from "./grouped-content.route";
 import { fileRouter } from "./file.route";
 import { complaintRouter } from "./complaint.route";
 import appReleaseRouter from "./app-release.route";
+import { academicYearRouter } from "./academic-year.route";
 
 export const mainRouter = Router();
 
@@ -31,6 +32,7 @@ mainRouter.use("/libraries", libraryRouter);
 mainRouter.use("/time-periods", timePeriodRouter);
 mainRouter.use("/branches", branchRouter);
 mainRouter.use("/departments", departmentRouter);
+mainRouter.use("/academic-years", academicYearRouter);
 mainRouter.use("/students", studentRouter);
 mainRouter.use("/subjects", subjectRouter);
 mainRouter.use("/content/lectures", lectureRouter);

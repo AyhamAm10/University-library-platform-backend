@@ -1,4 +1,4 @@
-import { TenantService } from "../tenant.service";
+import { AcademicContentService } from "../academic-content.service";
 import { QuestionBankItem, QuestionType, FeatureType } from "@prisma/client";
 import { TenantContext } from "../../types/tenant.context";
 import { CreateQuestionDto, UpdateQuestionDto } from "../../dto/question-bank.dto";
@@ -9,7 +9,7 @@ import { SubscriptionService } from "./subscription.service";
 import { StoredFileService } from "./stored-file.service";
 import { FileStorageService } from "../storage/file-storage.service";
 
-export class QuestionBankService extends TenantService<QuestionBankItem> {
+export class QuestionBankService extends AcademicContentService<QuestionBankItem> {
   private _subjectService?: SubjectService;
   private _subscriptionService?: SubscriptionService;
   private _storedFileService?: StoredFileService;
@@ -168,6 +168,7 @@ export class QuestionBankService extends TenantService<QuestionBankItem> {
 
   async fetchQuestions(options?: {
     subjectId?: string;
+    yearLevel?: number;
     questionType?: string;
     difficulty?: string;
     page?: number;
@@ -195,8 +196,25 @@ export class QuestionBankService extends TenantService<QuestionBankItem> {
       }
 
       where.id = { in: subscribedMaterialIds };
-    } else if (options?.subjectId) {
-      where.subjectId = options.subjectId;
+
+      if (options?.yearLevel !== undefined) {
+        const { departmentId, branchId } = await this.resolveStudentAcademicContext();
+        if (departmentId) {
+          const academicSubjectIds = await this.resolveAcademicSubjectIds({
+            departmentId,
+            branchId,
+            yearLevel: options.yearLevel,
+          });
+          where.subjectId = { in: academicSubjectIds };
+        }
+      }
+    } else {
+      if (options?.subjectId) {
+        where.subjectId = options.subjectId;
+      } else if (options?.yearLevel !== undefined) {
+        const academicSubjectIds = await this.resolveAcademicSubjectIds({ yearLevel: options.yearLevel });
+        where.subjectId = { in: academicSubjectIds };
+      }
     }
 
     if (options?.questionType) {
@@ -209,7 +227,7 @@ export class QuestionBankService extends TenantService<QuestionBankItem> {
     return await this.getAllWithPagination({
       where,
       include: {
-        subject: { select: { id: true, name: true, code: true } },
+        subject: { select: { id: true, name: true, code: true, yearLevel: true } },
         file: {
           select: {
             id: true,

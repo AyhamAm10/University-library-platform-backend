@@ -25,3 +25,19 @@ branchRouter.put("/:id", checkRole([UserRole.LIBRARY_ADMIN, UserRole.SUPER_ADMIN
 branchRouter.delete("/:id", checkRole([UserRole.LIBRARY_ADMIN, UserRole.SUPER_ADMIN]), (req, res, next) => {
   controller.deleteBranch(req, res, next);
 });
+
+// Academic Years sub-routes for branch
+import { AcademicYearController } from "../controllers/academic-year.controller";
+const academicYearController = new AcademicYearController();
+
+branchRouter.get("/:branchId/academic-years", (req, res, next) => {
+  academicYearController.getAcademicYearsForBranch(req, res, next);
+});
+
+branchRouter.post(
+  "/:branchId/academic-years",
+  checkRole([UserRole.LIBRARY_ADMIN, UserRole.SUPER_ADMIN]),
+  (req, res, next) => {
+    academicYearController.createAcademicYearForBranch(req, res, next);
+  }
+);

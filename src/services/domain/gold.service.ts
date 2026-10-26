@@ -1,4 +1,4 @@
-import { TenantService } from "../tenant.service";
+import { AcademicContentService } from "../academic-content.service";
 import { GoldMaterial, FeatureType } from "@prisma/client";
 import { TenantContext } from "../../types/tenant.context";
 import { CreateGoldMaterialDto, UpdateGoldMaterialDto } from "../../dto/gold.dto";
@@ -7,7 +7,7 @@ import { BadRequestError } from "../../common/errors/http.error";
 import { SubjectService } from "./subject.service";
 import { SubscriptionService } from "./subscription.service";
 
-export class GoldService extends TenantService<GoldMaterial> {
+export class GoldService extends AcademicContentService<GoldMaterial> {
   private _subjectService?: SubjectService;
   private _subscriptionService?: SubscriptionService;
 
@@ -53,7 +53,7 @@ export class GoldService extends TenantService<GoldMaterial> {
     });
   }
 
-  async fetchGoldMaterials(subjectId?: string) {
+  async fetchGoldMaterials(subjectId?: string, yearLevel?: number) {
     const where: any = {};
 
     // For students: enforce active subscription per specific file / material!
@@ -64,20 +64,37 @@ export class GoldService extends TenantService<GoldMaterial> {
         subjectId
       );
 
-      // If student has no active subscriptions for golden papers, return empty immediately
       if (subscribedMaterialIds.length === 0) {
         return [];
       }
 
       where.id = { in: subscribedMaterialIds };
-    } else if (subjectId) {
-      where.subjectId = subjectId;
+
+      // فلترة إضافية بالسنة الدراسية عبر المواد
+      if (yearLevel !== undefined) {
+        const { departmentId, branchId } = await this.resolveStudentAcademicContext();
+        if (departmentId) {
+          const academicSubjectIds = await this.resolveAcademicSubjectIds({
+            departmentId,
+            branchId,
+            yearLevel,
+          });
+          where.subjectId = { in: academicSubjectIds };
+        }
+      }
+    } else {
+      if (subjectId) {
+        where.subjectId = subjectId;
+      } else if (yearLevel !== undefined) {
+        const academicSubjectIds = await this.resolveAcademicSubjectIds({ yearLevel });
+        where.subjectId = { in: academicSubjectIds };
+      }
     }
 
     return await this.getAll({
       where,
       include: {
-        subject: { select: { id: true, name: true, code: true } },
+        subject: { select: { id: true, name: true, code: true, yearLevel: true } },
       },
       orderBy: { createdAt: "desc" },
     });

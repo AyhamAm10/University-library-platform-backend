@@ -86,6 +86,7 @@ model Library {
   timePeriods    TimePeriod[]
   branches       Branch[]
   departments    Department[]
+  academicYears  AcademicYear[]
   students       Student[]
   subjects       Subject[]
   subscriptions  Subscription[]
@@ -139,6 +140,7 @@ model Branch {
 
   library        Library      @relation(fields: [libraryId], references: [id], onDelete: Cascade)
   departments    Department[]
+  academicYears  AcademicYear[]
   students       Student[]
   subjects       Subject[]
 
@@ -150,7 +152,6 @@ model Department {
   id          String    @id @default(uuid())
   libraryId   String
   branchId    String
-  parentId    String?
   name        String
   code        String?
   isActive    Boolean   @default(true)
@@ -159,18 +160,34 @@ model Department {
 
   library         Library            @relation(fields: [libraryId], references: [id], onDelete: Cascade)
   branch          Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  parent          Department?        @relation("DepartmentSpecialization", fields: [parentId], references: [id], onDelete: Cascade)
-  specializations Department[]       @relation("DepartmentSpecialization")
+  academicYears   AcademicYear[]
   students        Student[]
   subjects        Subject[]
-  lectures        Lecture[]
-  goldMaterials   GoldMaterial[]
-  summaries       SummaryMaterial[]
-  questions       QuestionBankItem[]
 
   @@index([libraryId, branchId])
-  @@index([parentId])
   @@map("departments")
+}
+
+model AcademicYear {
+  id           String      @id @default(uuid())
+  libraryId    String
+  branchId     String
+  departmentId String?
+  name         String      // e.g. "السنة الأولى", "السنة الخامسة", "سنة التخرج"
+  yearOrder    Int         @default(1) // للترتيب والتسلسل
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  library      Library     @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  branch       Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  subjects     Subject[]
+  students     Student[]
+
+  @@index([libraryId, branchId])
+  @@index([libraryId, branchId, departmentId])
+  @@map("academic_years")
 }
 
 model Student {
@@ -179,6 +196,7 @@ model Student {
   libraryId    String
   branchId     String?
   departmentId String?
+  academicYearId String?
   fullName     String
   dateOfBirth  DateTime
   phone        String        @unique
@@ -194,43 +212,47 @@ model Student {
   library      Library       @relation(fields: [libraryId], references: [id], onDelete: Cascade)
   branch       Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
   department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  academicYear AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
   subscriptions Subscription[]
   notifications Notification[]
   subscriptionRequests SubscriptionRequest[]
   complaints    Complaint[]
 
   @@index([libraryId, branchId])
+  @@index([libraryId, departmentId, academicYearId])
   @@map("students")
 }
 
 model Subject {
-  id          String             @id @default(uuid())
-  libraryId   String
-  branchId    String?
-  departmentId String?
-  name        String
-  code        String?
-  description String?
-  isActive    Boolean            @default(true)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  id             String             @id @default(uuid())
+  libraryId      String
+  departmentId   String?            // القسم الأكاديمي التابعة له المادة
+  branchId       String?            // الفرع/التخصص (اختياري — للمواد التخصصية)
+  academicYearId String?            // السنة الدراسية ككيان مستقل
+  yearLevel      Int?               @default(1) // اختياري للتوافقية
+  name           String
+  code           String?
+  description    String?
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
-  library     Library            @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  branch      Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  department  Department?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  library       Library            @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  department    Department?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  branch        Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  academicYear  AcademicYear?      @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
 
-  subscriptions Subscription[]
-  lectures      Lecture[]
-  goldMaterials GoldMaterial[]
-  summaries     SummaryMaterial[]
-  courses       Course[]
-  questions     QuestionBankItem[]
-  storedFiles   StoredFile[]
+  subscriptions        Subscription[]
+  lectures             Lecture[]
+  goldMaterials        GoldMaterial[]
+  summaries            SummaryMaterial[]
+  courses              Course[]
+  questions            QuestionBankItem[]
+  storedFiles          StoredFile[]
   subscriptionRequests SubscriptionRequest[]
 
-  @@index([libraryId])
-  @@index([branchId])
-  @@index([departmentId])
+  @@index([libraryId, departmentId, academicYearId]) // الـ Index الرئيسي للفلترة الأكاديمية
+  @@index([libraryId, branchId])
   @@map("subjects")
 }
 
@@ -264,7 +286,6 @@ model Lecture {
   libraryId     String
   timePeriodId  String
   subjectId     String
-  departmentId  String?
   title         String
   description   String?
   fileId        String?
@@ -275,11 +296,9 @@ model Lecture {
   library       Library     @relation(fields: [libraryId], references: [id], onDelete: Cascade)
   timePeriod    TimePeriod  @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
   subject       Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  department    Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   file          StoredFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
 
   @@index([libraryId, timePeriodId, subjectId])
-  @@index([departmentId])
   @@map("lectures")
 }
 
@@ -288,22 +307,19 @@ model GoldMaterial {
   libraryId    String
   timePeriodId String
   subjectId    String
-  departmentId String?
   title        String
   description  String?
   fileUrl      String?
+  fileId       String?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
   library      Library     @relation(fields: [libraryId], references: [id], onDelete: Cascade)
   timePeriod   TimePeriod  @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
   subject      Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  fileId       String?
   file         StoredFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
 
   @@index([libraryId, timePeriodId, subjectId])
-  @@index([departmentId])
   @@map("gold_materials")
 }
 
@@ -312,7 +328,6 @@ model SummaryMaterial {
   libraryId    String
   timePeriodId String
   subjectId    String
-  departmentId String?
   title        String
   description  String?
   fileId       String?
@@ -322,11 +337,9 @@ model SummaryMaterial {
   library      Library     @relation(fields: [libraryId], references: [id], onDelete: Cascade)
   timePeriod   TimePeriod  @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
   subject      Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   file         StoredFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
 
   @@index([libraryId, timePeriodId, subjectId])
-  @@index([departmentId])
   @@map("summary_materials")
 }
 
@@ -371,7 +384,6 @@ model QuestionBankItem {
   libraryId     String
   timePeriodId  String
   subjectId     String
-  departmentId  String?
   title         String?
   questionText  String?
   questionType  QuestionType? @default(MULTIPLE_CHOICE)
@@ -386,11 +398,9 @@ model QuestionBankItem {
   library       Library       @relation(fields: [libraryId], references: [id], onDelete: Cascade)
   timePeriod    TimePeriod    @relation(fields: [timePeriodId], references: [id], onDelete: Restrict)
   subject       Subject       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  department    Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   file          StoredFile?   @relation(fields: [fileId], references: [id], onDelete: SetNull)
 
   @@index([libraryId, timePeriodId, subjectId])
-  @@index([departmentId])
   @@map("question_bank_items")
 }
 
