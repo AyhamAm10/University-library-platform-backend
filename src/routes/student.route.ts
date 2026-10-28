@@ -33,3 +33,12 @@ studentRouter.post("/:id/activation-code", checkRole([UserRole.LIBRARY_ADMIN, Us
 studentRouter.post("/:id/unbind-device", checkRole([UserRole.LIBRARY_ADMIN, UserRole.SUPER_ADMIN]), (req, res, next) => {
   controller.unbindDevice(req, res, next);
 });
+
+studentRouter.post("/:id/activate-free-trial", checkRole([UserRole.LIBRARY_ADMIN, UserRole.SUPER_ADMIN]), (req, res, next) => {
+  controller.activateFreeTrial(req, res, next);
+});
+
+studentRouter.post("/:id/deactivate-free-trial", checkRole([UserRole.LIBRARY_ADMIN, UserRole.SUPER_ADMIN]), (req, res, next) => {
+  controller.deactivateFreeTrial(req, res, next);
+});
+

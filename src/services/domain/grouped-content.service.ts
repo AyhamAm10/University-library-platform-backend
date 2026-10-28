@@ -15,6 +15,8 @@ export interface GroupedSubjectItem {
   isSubscribed: boolean;
   hasPendingRequest: boolean;
   pendingRequestId: string | null;
+  isFreeTrial?: boolean;
+  wasFreeTrialExpired?: boolean;
   items: any[];
 }
 
@@ -47,7 +49,13 @@ export class GroupedContentService extends TenantService<any> {
     if (studentId) {
       const student = await prisma.student.findUnique({
         where: { id: studentId },
-        select: { branchId: true, departmentId: true, academicYearId: true },
+        select: {
+          branchId: true,
+          departmentId: true,
+          academicYearId: true,
+          freeTrialActive: true,
+          freeTrialExpiresAt: true,
+        },
       });
       if (student) {
         studentBranchId = student.branchId;
@@ -95,12 +103,28 @@ export class GroupedContentService extends TenantService<any> {
 
     const subjectIds = subjects.map((s) => s.id);
 
-    // Fetch active subscriptions for this student and featureType in current period
+    // Fetch active & expired subscriptions for this student and featureType in current period
     let activeSubscriptions: any[] = [];
     let pendingRequests: any[] = [];
+    let expiredSubscriptions: any[] = [];
+    const now = new Date();
 
     if (studentId) {
-      [activeSubscriptions, pendingRequests] = await Promise.all([
+      // 1. Auto-expire any active subscriptions that have passed expiresAt
+      await prisma.subscription.updateMany({
+        where: {
+          libraryId: this.libraryId,
+          studentId,
+          status: SubscriptionStatus.ACTIVE,
+          expiresAt: { lte: now },
+        },
+        data: {
+          status: SubscriptionStatus.EXPIRED,
+        },
+      });
+
+      // 2. Fetch active subscriptions, pending requests, and expired subscriptions
+      [activeSubscriptions, pendingRequests, expiredSubscriptions] = await Promise.all([
         prisma.subscription.findMany({
           where: {
             libraryId: this.libraryId,
@@ -108,6 +132,10 @@ export class GroupedContentService extends TenantService<any> {
             studentId,
             featureType,
             status: SubscriptionStatus.ACTIVE,
+            OR: [
+              { expiresAt: null },
+              { expiresAt: { gt: now } },
+            ],
           },
         }),
         prisma.subscriptionRequest.findMany({
@@ -119,17 +147,34 @@ export class GroupedContentService extends TenantService<any> {
             status: RequestStatus.PENDING,
           },
         }),
+        prisma.subscription.findMany({
+          where: {
+            libraryId: this.libraryId,
+            timePeriodId: this.timePeriodId,
+            studentId,
+            featureType,
+            status: SubscriptionStatus.EXPIRED,
+          },
+        }),
       ]);
     }
 
     // Build lookup maps for fast access
-    // Active subscribed subject IDs (whole subject subscription)
+    const activeSubscribedSubjectMap = new Map<string, any>();
+    activeSubscriptions.filter((s) => !s.materialId).forEach((s) => {
+      activeSubscribedSubjectMap.set(s.subjectId, s);
+    });
+
     const activeSubscribedSubjectIds = new Set(
       activeSubscriptions.filter((s) => !s.materialId).map((s) => s.subjectId)
     );
-    // Active subscribed material IDs (item-specific subscription)
     const activeSubscribedMaterialIds = new Set(
       activeSubscriptions.filter((s) => Boolean(s.materialId)).map((s) => s.materialId)
+    );
+
+    // Track expired free trials so we can mark returned subjects
+    const expiredFreeTrialSubjectIds = new Set(
+      expiredSubscriptions.filter((s) => s.isFreeTrial && !s.materialId).map((s) => s.subjectId)
     );
 
     // Pending requests map: subjectId -> requestId (for subject-level requests)
@@ -289,7 +334,8 @@ export class GroupedContentService extends TenantService<any> {
       // Feature-specific subscription architecture:
       // 1. LECTURES: Subscription is subject-wide (covers all present and future lectures of this subject)
       if (featureType === FeatureType.LECTURES) {
-        const isSubscribedToSubject = activeSubscribedSubjectIds.has(sub.id);
+        const activeSub = activeSubscribedSubjectMap.get(sub.id);
+        const isSubscribedToSubject = Boolean(activeSub);
         const hasPendingReq = pendingSubjectRequestMap.has(sub.id);
         const pendingReqId = pendingSubjectRequestMap.get(sub.id) || null;
 
@@ -305,10 +351,12 @@ export class GroupedContentService extends TenantService<any> {
             isSubscribed: true,
             hasPendingRequest: false,
             pendingRequestId: null,
+            isFreeTrial: Boolean(activeSub?.isFreeTrial),
             items: subjectItems,
           });
         } else {
           // Unsubscribed lectures subject
+          const wasExpiredTrial = expiredFreeTrialSubjectIds.has(sub.id);
           const sanitizedItems = subjectItems.map((item) => ({
             ...item,
             fileId: null,
@@ -328,6 +376,7 @@ export class GroupedContentService extends TenantService<any> {
             isSubscribed: false,
             hasPendingRequest: hasPendingReq,
             pendingRequestId: pendingReqId,
+            wasFreeTrialExpired: wasExpiredTrial,
             items: sanitizedItems,
           });
         }

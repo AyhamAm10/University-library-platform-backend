@@ -185,6 +185,21 @@ export class StudentService extends TenantService<Student> {
   }
 
   async fetchStudentDetails(id: string) {
+    const now = new Date();
+
+    // Auto-expire past-due subscriptions for this student
+    await prisma.subscription.updateMany({
+      where: {
+        libraryId: this.libraryId,
+        studentId: id,
+        status: "ACTIVE",
+        expiresAt: { lte: now },
+      },
+      data: {
+        status: "EXPIRED",
+      },
+    });
+
     const student = await this.getById(id, {
       include: {
         branch: true,
@@ -200,6 +215,15 @@ export class StudentService extends TenantService<Student> {
     });
 
     Ensure.exists(student, "student");
+
+    // Auto-clean student free trial flag if passed trial expiresAt
+    if (student?.freeTrialActive && student?.freeTrialExpiresAt && new Date(student.freeTrialExpiresAt) <= now) {
+      await prisma.student.update({
+        where: { id },
+        data: { freeTrialActive: false },
+      });
+      (student as any).freeTrialActive = false;
+    }
 
     const materialIds = ((student as any).subscriptions || [])
       .map((s: any) => s.materialId)
@@ -281,4 +305,67 @@ export class StudentService extends TenantService<Student> {
       message: "تم فك ارتباط الجهاز بهذا الحساب بنجاح",
     };
   }
+
+  async activateFreeTrial(id: string, durationDays: number = 30) {
+    const student = await this.getById(id);
+    Ensure.exists(student, "student");
+
+    const startedAt = new Date();
+    const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+
+    const updated = await this.update(id, {
+      freeTrialActive: true,
+      freeTrialStartedAt: startedAt,
+      freeTrialExpiresAt: expiresAt,
+    });
+
+    // Notify student about free trial activation
+    try {
+      await prisma.notification.create({
+        data: {
+          libraryId: this.libraryId,
+          studentId: id,
+          title: "تم تفعيل باقة شهر مجاناً! 🎁",
+          message: `تهانينا! تم تفعيل اشتراك تجريبي مجاني لحسابك لمدة ${durationDays} يوماً ينتهي في ${expiresAt.toLocaleDateString("ar-SY")}. يمكنك الآن الاشتراك في محاضرات أي مادة دراسية مجاناً وفورياً!`,
+          type: "FREE_TRIAL_ACTIVATED",
+        },
+      });
+    } catch (e) {
+      // Non-blocking notification
+    }
+
+    return {
+      student: updated,
+      message: `تم تفعيل شهر مجاناً للطالب بنجاح حتى ${expiresAt.toLocaleDateString("ar-SY")}`,
+    };
+  }
+
+  async deactivateFreeTrial(id: string) {
+    const student = await this.getById(id);
+    Ensure.exists(student, "student");
+
+    const updated = await this.update(id, {
+      freeTrialActive: false,
+    });
+
+    // Expire active free trial subscriptions
+    await prisma.subscription.updateMany({
+      where: {
+        libraryId: this.libraryId,
+        studentId: id,
+        isFreeTrial: true,
+        status: "ACTIVE",
+      },
+      data: {
+        status: "EXPIRED",
+        expiresAt: new Date(),
+      },
+    });
+
+    return {
+      student: updated,
+      message: "تم إيقاف الشهر المجاني بنجاح وإنهاء صلاحية الاشتراكات المجانية المرتبطة به",
+    };
+  }
 }
+

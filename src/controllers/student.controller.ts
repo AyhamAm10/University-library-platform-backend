@@ -97,4 +97,32 @@ export class StudentController {
       next(error);
     }
   }
+
+  async activateFreeTrial(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      Ensure.exists(id, "معرف الطالب");
+      const durationDays = req.body?.durationDays ? Number(req.body.durationDays) : 30;
+      const service = new StudentService(req.tenant!);
+      const result = await service.activateFreeTrial(id, durationDays);
+
+      return res.status(HttpStatusCode.OK).json(ApiResponse.success(result.student, result.message));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deactivateFreeTrial(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      Ensure.exists(id, "معرف الطالب");
+      const service = new StudentService(req.tenant!);
+      const result = await service.deactivateFreeTrial(id);
+
+      return res.status(HttpStatusCode.OK).json(ApiResponse.success(result.student, result.message));
+    } catch (error) {
+      next(error);
+    }
+  }
 }
+

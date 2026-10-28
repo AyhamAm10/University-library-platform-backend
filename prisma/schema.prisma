@@ -205,6 +205,9 @@ model Student {
   boundDeviceId        String?
   activationCode       String?
   activationExpiresAt  DateTime?
+  freeTrialActive      Boolean       @default(false)
+  freeTrialStartedAt   DateTime?
+  freeTrialExpiresAt   DateTime?
   tokenVersion         Int           @default(0)
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
@@ -265,6 +268,7 @@ model Subscription {
   featureType  FeatureType
   materialId   String?
   status       SubscriptionStatus @default(ACTIVE)
+  isFreeTrial  Boolean            @default(false)
   subscribedAt DateTime           @default(now())
   expiresAt    DateTime?
   createdAt    DateTime           @default(now())
@@ -456,6 +460,7 @@ model SubscriptionRequest {
   featureType  FeatureType
   materialId   String?
   status       RequestStatus @default(PENDING)
+  isFreeTrial  Boolean       @default(false)
   notes        String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt

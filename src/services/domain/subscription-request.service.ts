@@ -68,6 +68,7 @@ export class SubscriptionRequestService extends TenantService<SubscriptionReques
       dto.featureType === FeatureType.LECTURES ? null : (dto.materialId || null);
 
     // 1. Check if student is already actively subscribed
+    // Also auto-expire any past-due subscriptions if expiresAt has passed
     const whereSub: any = {
       studentId,
       subjectId: dto.subjectId,
@@ -77,12 +78,22 @@ export class SubscriptionRequestService extends TenantService<SubscriptionReques
     };
 
     const existingSub = await this.subscriptionService.findOne(whereSub);
+    const now = new Date();
+
     if (existingSub) {
-      throw new BadRequestError(
-        effectiveMaterialId
-          ? "أنت مشترك بالفعل في هذا العنصر المحدد"
-          : "أنت مشترك بالفعل في محاضرات هذه المادة"
-      );
+      if (existingSub.expiresAt && new Date(existingSub.expiresAt) <= now) {
+        // Automatically expire this past-due subscription
+        await prisma.subscription.update({
+          where: { id: existingSub.id },
+          data: { status: SubscriptionStatus.EXPIRED },
+        });
+      } else {
+        throw new BadRequestError(
+          effectiveMaterialId
+            ? "أنت مشترك بالفعل في هذا العنصر المحدد"
+            : "أنت مشترك بالفعل في محاضرات هذه المادة"
+        );
+      }
     }
 
     // 2. Check if student already has a pending request for this item
@@ -99,18 +110,107 @@ export class SubscriptionRequestService extends TenantService<SubscriptionReques
       throw new BadRequestError("لديك طلب اشتراك قيد المراجعة بالفعل لهذا المحتوى، يرجى انتظار معالجته من قبل الإدارة");
     }
 
-    // 3. Create the subscription request
+    // 3. Free Trial Auto-Activation Check:
+    // Applies strictly to LECTURES feature only when student has an active, unexpired free trial
+    const isFreeTrialEligible =
+      dto.featureType === FeatureType.LECTURES &&
+      Boolean(student.freeTrialActive) &&
+      student.freeTrialExpiresAt !== null &&
+      new Date(student.freeTrialExpiresAt) > now;
+
+    // If student's free trial has expired in time, clean up their freeTrialActive flag
+    if (
+      student.freeTrialActive &&
+      student.freeTrialExpiresAt &&
+      new Date(student.freeTrialExpiresAt) <= now
+    ) {
+      await prisma.student.update({
+        where: { id: studentId },
+        data: { freeTrialActive: false },
+      });
+    }
+
+    if (isFreeTrialEligible) {
+      // Create or update subscription record with isFreeTrial: true and expiresAt matching trial expiry
+      let subscription: any;
+      const existingAnySub = await prisma.subscription.findFirst({
+        where: {
+          libraryId: this.libraryId,
+          timePeriodId: this.timePeriodId,
+          studentId,
+          subjectId: dto.subjectId,
+          featureType: FeatureType.LECTURES,
+          materialId: null,
+        },
+      });
+
+      if (existingAnySub) {
+        subscription = await prisma.subscription.update({
+          where: { id: existingAnySub.id },
+          data: {
+            status: SubscriptionStatus.ACTIVE,
+            isFreeTrial: true,
+            subscribedAt: now,
+            expiresAt: student.freeTrialExpiresAt,
+          },
+        });
+      } else {
+        subscription = await this.subscriptionService.create({
+          studentId,
+          subjectId: dto.subjectId,
+          featureType: FeatureType.LECTURES,
+          materialId: null,
+          status: SubscriptionStatus.ACTIVE,
+          isFreeTrial: true,
+          subscribedAt: now,
+          expiresAt: student.freeTrialExpiresAt,
+        });
+      }
+
+      // Create pre-approved subscription request record for auditing and reporting
+      const request = await this.create({
+        studentId,
+        subjectId: dto.subjectId,
+        featureType: FeatureType.LECTURES,
+        materialId: null,
+        status: RequestStatus.APPROVED,
+        isFreeTrial: true,
+        notes: "تم التفعيل الفوري التلقائي ضمن الشهر المجاني",
+      });
+
+      // Send celebratory notification to student
+      try {
+        await this.notificationService.create({
+          studentId,
+          title: "تم تفعيل اشتراك المحاضرات فورياً! 🎁",
+          message: `تم تفعيل اشتراكك في محاضرات مادة (${subject.name}) بنجاح وفورياً ضمن باقة الشهر المجاني. يمكنك الآن البدء بدراسة المحاضرات!`,
+          type: "FREE_TRIAL_SUBSCRIPTION",
+        });
+      } catch (e) {
+        // Non-blocking notification
+      }
+
+      return {
+        ...request,
+        autoSubscribed: true,
+        subscription,
+      };
+    }
+
+    // 4. Standard request flow for non-lecture features or students without free trial
     const request = await this.create({
       studentId,
       subjectId: dto.subjectId,
       featureType: dto.featureType as FeatureType,
       materialId: effectiveMaterialId,
       status: RequestStatus.PENDING,
+      isFreeTrial: false,
       notes: dto.notes || null,
     });
 
     return request;
   }
+
 
   async fetchRequests(options?: {
     studentId?: string;
