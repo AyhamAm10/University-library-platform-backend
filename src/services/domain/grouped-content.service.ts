@@ -63,16 +63,13 @@ export class GroupedContentService extends TenantService<any> {
     };
 
     if (studentId) {
+      if (studentBranchId) {
+        subjectWhere.branchId = studentBranchId;
+      }
       if (studentDepartmentId) {
         subjectWhere.departmentId = studentDepartmentId;
-        if (studentBranchId) {
-          subjectWhere.OR = [
-            { branchId: studentBranchId },
-            { branchId: null },
-          ];
-        }
       } else {
-        // Fallback for students with no assigned department
+        // Fallback for branches without departments
         subjectWhere.departmentId = null;
       }
     }
