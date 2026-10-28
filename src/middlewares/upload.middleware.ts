@@ -32,7 +32,7 @@ export const pdfUploadMiddleware = (req: Request, res: Response, next: NextFunct
     if (err) {
       if (err instanceof multer.MulterError) {
         if (err.code === "LIMIT_FILE_SIZE") {
-          return next(new BadRequestError("حجم الملف يتجاوز الحد الأقصى المسموح به (15 ميجابايت)"));
+          return next(new BadRequestError("حجم الملف يتجاوز الحد الأقصى المسموح به (50 ميجابايت)"));
         }
         return next(new BadRequestError(`خطأ أثناء رفع الملف: ${err.message}`));
       }

@@ -6,8 +6,8 @@ export const StorageConfig = {
   STORAGE_ROOT: path.resolve(__dirname, "../../storage"),
   RELEASES_ROOT: path.resolve(__dirname, "../../storage/releases"),
 
-  // Maximum allowed file size in bytes (approx 15 MB for PDFs, 250 MB for APKs)
-  MAX_FILE_SIZE: 15 * 1024 * 1024,
+  // Maximum allowed file size in bytes (50 MB for PDFs, 250 MB for APKs)
+  MAX_FILE_SIZE: 50 * 1024 * 1024,
   MAX_APK_FILE_SIZE: 250 * 1024 * 1024,
 
   // Allowed MIME types

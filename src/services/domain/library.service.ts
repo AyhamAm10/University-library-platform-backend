@@ -3,6 +3,11 @@ import { Library, UserRole } from "@prisma/client";
 import { Ensure } from "../../common/errors/Ensure.handler";
 import { CreateLibraryDto, UpdateLibraryDto } from "../../dto/library.dto";
 import bcrypt from "bcryptjs";
+import fs from "fs";
+import path from "path";
+import { prisma } from "../../config/prisma";
+import { StorageConfig } from "../../config/storage.config";
+import { FileStorageService } from "../storage/file-storage.service";
 import { AuthService } from "./auth.service";
 import { TimePeriodService } from "./time-period.service";
 import { StudentService } from "./student.service";
@@ -230,5 +235,88 @@ export class LibraryService extends RepoService<Library> {
       totalSubscriptions,
       activeSubscriptions,
     };
+  }
+
+  async deleteLibraryPermanently(id: string) {
+    const library = await this.getById(id);
+    Ensure.exists(library, "library", "المكتبة المطلوبة غير موجودة");
+
+    // 1. Fetch all stored files belonging to this library to delete from physical disk
+    const storedFiles = await prisma.storedFile.findMany({
+      where: { libraryId: id },
+      select: { storageKey: true },
+    });
+
+    for (const file of storedFiles) {
+      if (file.storageKey) {
+        await FileStorageService.deletePhysicalFile(file.storageKey);
+      }
+    }
+
+    // 2. Remove all subject folders belonging to this library from storage root
+    const subjects = await prisma.subject.findMany({
+      where: { libraryId: id },
+      select: { id: true, name: true },
+    });
+
+    for (const subj of subjects) {
+      const folderName = FileStorageService.getSubjectFolder(subj.name, subj.id);
+      const folderPath = path.resolve(StorageConfig.STORAGE_ROOT, folderName);
+      if (folderPath.startsWith(StorageConfig.STORAGE_ROOT) && fs.existsSync(folderPath)) {
+        try {
+          await fs.promises.rm(folderPath, { recursive: true, force: true });
+        } catch (err) {
+          console.error(`[deleteLibraryPermanently] Failed to remove subject folder ${folderPath}:`, err);
+        }
+      }
+    }
+
+    // 3. Atomically delete all records across all related tables in sequential dependency order
+    await prisma.$transaction(async (tx) => {
+      // Content & Files
+      await tx.storedFile.deleteMany({ where: { libraryId: id } });
+      await tx.lecture.deleteMany({ where: { libraryId: id } });
+      await tx.goldMaterial.deleteMany({ where: { libraryId: id } });
+      await tx.summaryMaterial.deleteMany({ where: { libraryId: id } });
+
+      const courses = await tx.course.findMany({
+        where: { libraryId: id },
+        select: { id: true },
+      });
+      const courseIds = courses.map((c) => c.id);
+      if (courseIds.length > 0) {
+        await tx.courseLesson.deleteMany({
+          where: { courseId: { in: courseIds } },
+        });
+      }
+      await tx.course.deleteMany({ where: { libraryId: id } });
+      await tx.questionBankItem.deleteMany({ where: { libraryId: id } });
+
+      // Subscriptions & Requests & Communications
+      await tx.subscriptionRequest.deleteMany({ where: { libraryId: id } });
+      await tx.subscription.deleteMany({ where: { libraryId: id } });
+      await tx.complaint.deleteMany({ where: { libraryId: id } });
+      await tx.notification.deleteMany({ where: { libraryId: id } });
+
+      // Students
+      await tx.student.deleteMany({ where: { libraryId: id } });
+
+      // Academic Hierarchy
+      await tx.subject.deleteMany({ where: { libraryId: id } });
+      await tx.academicYear.deleteMany({ where: { libraryId: id } });
+      await tx.department.deleteMany({ where: { libraryId: id } });
+      await tx.branch.deleteMany({ where: { libraryId: id } });
+
+      // Time Periods
+      await tx.timePeriod.deleteMany({ where: { libraryId: id } });
+
+      // Library Admin Users
+      await tx.user.deleteMany({ where: { libraryId: id } });
+
+      // Library
+      await tx.library.delete({ where: { id } });
+    });
+
+    return { success: true };
   }
 }

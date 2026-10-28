@@ -33,3 +33,7 @@ libraryRouter.put("/:id", checkRole([UserRole.SUPER_ADMIN]), (req, res, next) =>
 libraryRouter.patch("/:id/toggle-status", checkRole([UserRole.SUPER_ADMIN]), (req, res, next) => {
   controller.toggleStatus(req, res, next);
 });
+
+libraryRouter.delete("/:id", checkRole([UserRole.SUPER_ADMIN]), (req, res, next) => {
+  controller.deleteLibrary(req, res, next);
+});

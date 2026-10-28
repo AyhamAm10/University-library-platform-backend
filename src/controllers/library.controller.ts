@@ -96,4 +96,19 @@ export class LibraryController {
       next(error);
     }
   }
+
+  async deleteLibrary(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      Ensure.exists(id, "معرف المكتبة");
+      const service = new LibraryService();
+      await service.deleteLibraryPermanently(id);
+
+      return res
+        .status(HttpStatusCode.OK)
+        .json(ApiResponse.success({}, "تم حذف المكتبة وجميع بياناتها وملفاتها نهائياً بنجاح"));
+    } catch (error) {
+      next(error);
+    }
+  }
 }
