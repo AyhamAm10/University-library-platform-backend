@@ -203,3 +203,15 @@ Domain Services (StudentService, SubjectService, SubscriptionService...)
 8. ❌ **التعامل مع بنك الأسئلة كملفات مرفقة بدلاً من سجلات تفاعلية منظمة**.
 9. ❌ **إرجاع استجابات JSON عشوائية دون استخدام `ApiResponse.success`**.
 10. ❌ **إجراء عمليات الحذف بدون تأكيدات وفحوصات التبعيات (Relations Check)**.
+
+---
+
+## 9. نظام الإشعارات (Notifications)
+
+* **المصدر الوحيد للحقيقة هو PostgreSQL**: `Notification` (إشعار واحد) + `NotificationRecipient` (سطر لكل طالب مع `readAt`). Firebase Cloud Messaging للتوصيل الفوري فقط.
+* **الإرسال حصراً عبر `NotificationService.dispatch`** (أو `notifyNewContent` / `notifyStudent` / `createAnnouncement`)؛ يمنع إنشاء سجلات الإشعارات مباشرة.
+* **جمهور "محتوى جديد"** = نفس منطق ظهور المادة في `GroupedContentService` (الفرع + القسم + السنة إن حُددت للطالب) + المشتركون الحاليون في المادة.
+* **الإعلان اليدوي** يصل لطلاب مكتبة المسؤول فقط، مع تحديد اختياري بالفرع/القسم/السنة.
+* **بيانات الانتقال `data`**: `{ featureType, subjectId, academicYearId, itemId }` — يستخدمها التطبيق لفتح السنة والمادة وإبراز العنصر.
+* فشل الإشعار **لا يجوز** أن يُفشل العملية الأصلية (رفع محاضرة مثلاً): الإرسال الفوري يتم بدون انتظار.
+* متغيرات البيئة: `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` — بدونها تبقى الإشعارات داخل صندوق الوارد دون Push.

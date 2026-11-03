@@ -1,5 +1,5 @@
 import { TenantService } from "../tenant.service";
-import { Complaint, ComplaintStatus } from "@prisma/client";
+import { Complaint, ComplaintStatus, NotificationCategory } from "@prisma/client";
 import { TenantContext } from "../../types/tenant.context";
 import { CreateComplaintDto, UpdateComplaintStatusDto } from "../../dto/complaint.dto";
 import { Ensure } from "../../common/errors/Ensure.handler";
@@ -152,11 +152,10 @@ export class ComplaintService extends TenantService<Complaint> {
           message += ` رد الإدارة: ${dto.reply}`;
         }
 
-        await this.notificationService.create({
-          studentId: existing!.studentId,
+        await this.notificationService.notifyStudent(existing!.studentId, {
+          category: NotificationCategory.COMPLAINT,
           title: "تحديث بخصوص الشكوى",
           message,
-          type: "COMPLAINT",
         });
       } catch (err) {
         // Notification logging should not block status update

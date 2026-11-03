@@ -5,6 +5,7 @@ import { CreateQuestionDto, UpdateQuestionDto } from "../../dto/question-bank.dt
 import { Ensure } from "../../common/errors/Ensure.handler";
 import { BadRequestError, ForbiddenError } from "../../common/errors/http.error";
 import { SubjectService } from "./subject.service";
+import { NotificationService } from "./notification.service";
 import { SubscriptionService } from "./subscription.service";
 import { StoredFileService } from "./stored-file.service";
 import { FileStorageService } from "../storage/file-storage.service";
@@ -77,7 +78,7 @@ export class QuestionBankService extends AcademicContentService<QuestionBankItem
       fileId = storedFile.id;
     }
 
-    return await this.create({
+    const created = await this.create({
       subjectId: dto.subjectId,
       title: dto.title?.trim() || (file ? file.originalname.replace(/\.[^/.]+$/, "") : null),
       questionText: dto.questionText?.trim() || null,
@@ -88,6 +89,17 @@ export class QuestionBankService extends AcademicContentService<QuestionBankItem
       difficulty: dto.difficulty || "MEDIUM",
       fileId,
     });
+
+    if (file) {
+      await new NotificationService(this.tenantContext).notifyNewContent({
+        featureType: FeatureType.QUESTION_BANK,
+        subjectId: dto.subjectId,
+        itemId: (created as any).id,
+        itemTitle: (created as any).title || "أسئلة دورات سابقة",
+      });
+    }
+
+    return created;
   }
 
   async updateQuestion(id: string, dto: UpdateQuestionDto, file?: Express.Multer.File) {

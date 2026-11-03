@@ -85,29 +85,17 @@ export class LectureService extends AcademicContentService<Lecture> {
       orderIndex: dto.orderIndex ?? 0,
     });
 
-    // Educational Lecture Subscription behavior:
-    // Auto-access: Active subscribers to the lecture service automatically have access to this new lecture.
-    // Dispatch notification to all active subscribers of this subject/feature in this period
-    const activeSubscribers = await this.subscriptionService.findMany({
-      subjectId: dto.subjectId,
+    // Active lecture subscribers get access automatically; every student who can see the subject is notified
+    const notifiedStudentsCount = await this.notificationService.notifyNewContent({
       featureType: FeatureType.LECTURES,
-      status: SubscriptionStatus.ACTIVE,
+      subjectId: dto.subjectId,
+      itemId: (lecture as any).id,
+      itemTitle: dto.title.trim(),
     });
-
-    if (activeSubscribers.length > 0) {
-      await this.notificationService.createMany(
-        activeSubscribers.map((sub: any) => ({
-          studentId: sub.studentId,
-          title: `محاضرة جديدة: ${dto.title}`,
-          message: `تم رفع محاضرة جديدة لمادة ${subject!.name}، أصبحت متوفرة الآن في حسابك مباشرة.`,
-          type: "LECTURE_UPLOAD",
-        }))
-      );
-    }
 
     return {
       lecture,
-      notifiedSubscribersCount: activeSubscribers.length,
+      notifiedSubscribersCount: notifiedStudentsCount,
     };
   }
 

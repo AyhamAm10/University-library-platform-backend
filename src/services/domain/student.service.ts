@@ -1,5 +1,6 @@
 import { TenantService } from "../tenant.service";
-import { Student } from "@prisma/client";
+import { Student, NotificationCategory } from "@prisma/client";
+import { NotificationService } from "./notification.service";
 import { Ensure } from "../../common/errors/Ensure.handler";
 import { BadRequestError } from "../../common/errors/http.error";
 import { TenantContext } from "../../types/tenant.context";
@@ -321,14 +322,10 @@ export class StudentService extends TenantService<Student> {
 
     // Notify student about free trial activation
     try {
-      await prisma.notification.create({
-        data: {
-          libraryId: this.libraryId,
-          studentId: id,
-          title: "تم تفعيل باقة شهر مجاناً! 🎁",
-          message: `تهانينا! تم تفعيل اشتراك تجريبي مجاني لحسابك لمدة ${durationDays} يوماً ينتهي في ${expiresAt.toLocaleDateString("ar-SY")}. يمكنك الآن الاشتراك في محاضرات أي مادة دراسية مجاناً وفورياً!`,
-          type: "FREE_TRIAL_ACTIVATED",
-        },
+      await new NotificationService(this.tenantContext).notifyStudent(id, {
+        category: NotificationCategory.SUBSCRIPTION,
+        title: "تم تفعيل باقة شهر مجاناً! 🎁",
+        message: `تهانينا! تم تفعيل اشتراك تجريبي مجاني لحسابك لمدة ${durationDays} يوماً ينتهي في ${expiresAt.toLocaleDateString("ar-SY")}. يمكنك الآن الاشتراك في محاضرات أي مادة دراسية مجاناً وفورياً!`,
       });
     } catch (e) {
       // Non-blocking notification

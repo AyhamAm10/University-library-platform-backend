@@ -1,5 +1,5 @@
 import { TenantService } from "../tenant.service";
-import { SubscriptionRequest, RequestStatus, SubscriptionStatus, FeatureType } from "@prisma/client";
+import { SubscriptionRequest, RequestStatus, SubscriptionStatus, FeatureType, NotificationCategory } from "@prisma/client";
 import { TenantContext } from "../../types/tenant.context";
 import { CreateSubscriptionRequestDto } from "../../dto/subscription-request.dto";
 import { Ensure } from "../../common/errors/Ensure.handler";
@@ -320,11 +320,16 @@ export class SubscriptionRequestService extends TenantService<SubscriptionReques
     });
 
     // 3. Dispatch notification to the student
-    await this.notificationService.create({
-      studentId: request.studentId,
+    await this.notificationService.notifyStudent(request.studentId, {
+      category: NotificationCategory.SUBSCRIPTION,
       title: "تمت الموافقة على طلب اشتراكك",
       message: `تمت الموافقة على طلب اشتراكك في مادة (${request.subject?.name}) وتفعيله بنجاح. يمكنك الآن تصفح كامل المحتوى مباشرة.`,
-      type: "SUBSCRIPTION_APPROVED",
+      data: {
+        featureType: request.featureType,
+        subjectId: request.subjectId,
+        academicYearId: request.subject?.academicYearId ?? null,
+        itemId: request.materialId || undefined,
+      },
     });
 
     return { request: updatedRequest, subscription };

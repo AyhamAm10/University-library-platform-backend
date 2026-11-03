@@ -5,6 +5,7 @@ import { CreateGoldMaterialDto, UpdateGoldMaterialDto } from "../../dto/gold.dto
 import { Ensure } from "../../common/errors/Ensure.handler";
 import { BadRequestError } from "../../common/errors/http.error";
 import { SubjectService } from "./subject.service";
+import { NotificationService } from "./notification.service";
 import { SubscriptionService } from "./subscription.service";
 
 export class GoldService extends AcademicContentService<GoldMaterial> {
@@ -37,12 +38,21 @@ export class GoldService extends AcademicContentService<GoldMaterial> {
     const subject = await this.subjectService.findById(dto.subjectId);
     Ensure.exists(subject, "subject");
 
-    return await this.create({
+    const created = await this.create({
       subjectId: dto.subjectId,
       title: dto.title.trim(),
       description: dto.description?.trim() || null,
       fileUrl: dto.fileUrl?.trim() || null,
     });
+
+    await new NotificationService(this.tenantContext).notifyNewContent({
+      featureType: FeatureType.GOLD_PAPERS,
+      subjectId: dto.subjectId,
+      itemId: (created as any).id,
+      itemTitle: dto.title.trim(),
+    });
+
+    return created;
   }
 
   async updateGoldMaterial(id: string, dto: UpdateGoldMaterialDto) {

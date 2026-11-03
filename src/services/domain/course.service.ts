@@ -5,6 +5,7 @@ import { CreateCourseDto, AddCourseLessonDto } from "../../dto/course.dto";
 import { Ensure } from "../../common/errors/Ensure.handler";
 import { BadRequestError, ForbiddenError } from "../../common/errors/http.error";
 import { SubjectService } from "./subject.service";
+import { NotificationService } from "./notification.service";
 import { CourseLessonService } from "./course-lesson.service";
 import { SubscriptionService } from "./subscription.service";
 
@@ -46,12 +47,21 @@ export class CourseService extends AcademicContentService<Course> {
     const subject = await this.subjectService.findById(dto.subjectId);
     Ensure.exists(subject, "subject");
 
-    return await this.create({
+    const created = await this.create({
       subjectId: dto.subjectId,
       title: dto.title.trim(),
       description: dto.description?.trim() || null,
       thumbnailUrl: dto.thumbnailUrl?.trim() || null,
     });
+
+    await new NotificationService(this.tenantContext).notifyNewContent({
+      featureType: FeatureType.COURSES,
+      subjectId: dto.subjectId,
+      itemId: (created as any).id,
+      itemTitle: dto.title.trim(),
+    });
+
+    return created;
   }
 
   async addLessonToCourse(courseId: string, dto: AddCourseLessonDto) {

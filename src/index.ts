@@ -32,30 +32,52 @@ app.use(
   })
 );
 
-app.use(
-  cors({
-    origin: ["*"],
-    // origin: Environment.CORS_ORIGINS.length > 0 ? Environment.CORS_ORIGINS : true,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Client-Type",
-      "X-Device-Id",
-      "Accept-Language",
-      "X-Library-Id",
-      "X-Time-Period-Id",
-      "Range",
-    ],
-    exposedHeaders: [
-      "Authorization",
-      "Content-Range",
-      "Accept-Ranges",
-      "Content-Length",
-    ],
-  })
-);
+// إعدادات الـ CORS: في وضع التطوير (development) مفتوح بالكامل للجميع بدون أي قيود
+if (Environment.isDevelopment()) {
+  app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.header(
+      "Access-Control-Allow-Headers",
+      req.headers["access-control-request-headers"] || "*"
+    );
+    res.header(
+      "Access-Control-Expose-Headers",
+      "Authorization, Content-Range, Accept-Ranges, Content-Length"
+    );
+
+    if (req.method === "OPTIONS") {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  });
+} else {
+  app.use(
+    cors({
+      origin: Environment.CORS_ORIGINS.length > 0 ? Environment.CORS_ORIGINS : true,
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-Client-Type",
+        "X-Device-Id",
+        "Accept-Language",
+        "X-Library-Id",
+        "X-Time-Period-Id",
+        "Range",
+      ],
+      exposedHeaders: [
+        "Authorization",
+        "Content-Range",
+        "Accept-Ranges",
+        "Content-Length",
+      ],
+    })
+  );
+}
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));

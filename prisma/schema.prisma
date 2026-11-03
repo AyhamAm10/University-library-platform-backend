@@ -42,6 +42,14 @@ enum QuestionType {
   TRUE_FALSE
 }
 
+enum NotificationCategory {
+  NEW_CONTENT
+  ANNOUNCEMENT
+  SUBSCRIPTION
+  COMPLAINT
+  SYSTEM
+}
+
 enum ComplaintStatus {
   PENDING
   IN_PROGRESS
@@ -213,12 +221,13 @@ model Student {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  library              Library               @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  branch               Branch?               @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  department           Department?           @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  academicYear         AcademicYear?         @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  library              Library                 @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  branch               Branch?                 @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  department           Department?             @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  academicYear         AcademicYear?           @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
   subscriptions        Subscription[]
-  notifications        Notification[]
+  notificationReceipts NotificationRecipient[]
+  pushTokens           StudentPushToken[]
   subscriptionRequests SubscriptionRequest[]
   complaints           Complaint[]
 
@@ -435,21 +444,61 @@ model StoredFile {
   @@map("stored_files")
 }
 
+/// إشعار واحد (من النظام أو من إدارة المكتبة) يصل لعدة طلاب عبر NotificationRecipient
 model Notification {
-  id        String   @id @default(uuid())
-  libraryId String
-  studentId String?
-  title     String
-  message   String
-  type      String   @default("INFO")
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id              String               @id @default(uuid())
+  libraryId       String
+  category        NotificationCategory @default(SYSTEM)
+  title           String
+  message         String
+  /// بيانات الانتقال داخل التطبيق: featureType, subjectId, academicYearId, itemId
+  data            Json?
+  /// وصف الجمهور المستهدف (للعرض في لوحة التحكم)
+  audience        Json?
+  createdById     String?
+  recipientsCount Int                  @default(0)
+  createdAt       DateTime             @default(now())
 
-  library Library  @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  library    Library                 @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  recipients NotificationRecipient[]
 
-  @@index([libraryId, studentId])
+  @@index([libraryId, createdAt])
   @@map("notifications")
+}
+
+/// صندوق وارد الطالب: سطر لكل طالب مستلم مع حالة القراءة
+model NotificationRecipient {
+  id             String    @id @default(uuid())
+  notificationId String
+  studentId      String
+  libraryId      String
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, studentId])
+  @@index([studentId, createdAt])
+  @@index([studentId, readAt])
+  @@map("notification_recipients")
+}
+
+/// رموز FCM لأجهزة الطالب (أندرويد / iOS / ويب)
+model StudentPushToken {
+  id        String   @id @default(uuid())
+  studentId String
+  libraryId String
+  token     String   @unique
+  platform  String
+  deviceId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@map("student_push_tokens")
 }
 
 model SubscriptionRequest {

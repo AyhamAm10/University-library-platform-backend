@@ -5,6 +5,7 @@ import { CreateSummaryMaterialDto, UpdateSummaryMaterialDto } from "../../dto/su
 import { Ensure } from "../../common/errors/Ensure.handler";
 import { BadRequestError } from "../../common/errors/http.error";
 import { SubjectService } from "./subject.service";
+import { NotificationService } from "./notification.service";
 import { SubscriptionService } from "./subscription.service";
 import { StoredFileService } from "./stored-file.service";
 import { FileStorageService } from "../storage/file-storage.service";
@@ -66,12 +67,21 @@ export class SummaryService extends AcademicContentService<SummaryMaterial> {
 
     const fileId = storedFile.id;
 
-    return await this.create({
+    const created = await this.create({
       subjectId: dto.subjectId,
       title: dto.title.trim(),
       description: dto.description?.trim() || null,
       fileId,
     });
+
+    await new NotificationService(this.tenantContext).notifyNewContent({
+      featureType: FeatureType.SUMMARIES,
+      subjectId: dto.subjectId,
+      itemId: (created as any).id,
+      itemTitle: dto.title.trim(),
+    });
+
+    return created;
   }
 
   async updateSummaryMaterial(id: string, dto: UpdateSummaryMaterialDto, file?: Express.Multer.File) {
