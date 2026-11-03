@@ -11,7 +11,7 @@ export const tenantMiddleware = async (
   try {
     const user = req.user;
     if (!user) {
-      return next(new ForbiddenError("Authentication required for tenant context"));
+      return next(new ForbiddenError("يرجى تسجيل الدخول أولاً"));
     }
 
     let libraryId: string = "";
@@ -19,7 +19,7 @@ export const tenantMiddleware = async (
 
     if (user.role === UserRole.LIBRARY_ADMIN) {
       if (!user.libraryId) {
-        return next(new ForbiddenError("Library Admin account is not linked to any library"));
+        return next(new ForbiddenError("حساب المسؤول غير مرتبط بأي مكتبة"));
       }
       libraryId = user.libraryId;
 
@@ -33,7 +33,7 @@ export const tenantMiddleware = async (
           },
         });
         if (!period) {
-          return next(new NotFoundError("Requested time period not found in this library"));
+          return next(new NotFoundError("الفترة الزمنية المطلوبة غير موجودة في هذه المكتبة"));
         }
         timePeriodId = period.id;
       } else {
@@ -66,7 +66,7 @@ export const tenantMiddleware = async (
           where: { id: explicitLibraryId },
         });
         if (!library) {
-          return next(new NotFoundError("Target library not found"));
+          return next(new NotFoundError("المكتبة المطلوبة غير موجودة"));
         }
         libraryId = library.id;
 
@@ -96,7 +96,7 @@ export const tenantMiddleware = async (
 
     if (user.role === "STUDENT") {
       if (!user.libraryId) {
-        return next(new ForbiddenError("Student is not linked to any library"));
+        return next(new ForbiddenError("حساب الطالب غير مرتبط بأي مكتبة"));
       }
       libraryId = user.libraryId;
 
@@ -117,7 +117,7 @@ export const tenantMiddleware = async (
       return next();
     }
 
-    return next(new ForbiddenError("Unauthorized role for tenant operations"));
+    return next(new ForbiddenError("ليس لديك صلاحية لتنفيذ هذه العملية"));
   } catch (error) {
     next(error);
   }

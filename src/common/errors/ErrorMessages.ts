@@ -1,3 +1,36 @@
+export type Language = "en" | "ar";
+
+/**
+ * قاموس أسماء الكيانات بالعربية — يمنع ظهور أسماء النماذج الإنجليزية (مثل timePeriod)
+ * داخل رسائل الأخطاء الموجهة للمستخدم.
+ */
+const ARABIC_ENTITY_NAMES: Record<string, string> = {
+  user: "المستخدم",
+  library: "المكتبة",
+  timePeriod: "الفترة الزمنية",
+  branch: "الفرع",
+  department: "القسم",
+  academicYear: "السنة الدراسية",
+  student: "الطالب",
+  subject: "المادة",
+  lecture: "المحاضرة",
+  goldMaterial: "الورقة الذهبية",
+  summaryMaterial: "الملخص",
+  course: "الكورس",
+  courseLesson: "درس الكورس",
+  question: "السؤال",
+  questionBankItem: "سؤال بنك الأسئلة",
+  storedFile: "الملف",
+  subscription: "الاشتراك",
+  subscriptionRequest: "طلب الاشتراك",
+  notification: "الإشعار",
+  complaint: "الشكوى",
+  appRelease: "إصدار التطبيق",
+  adminPhone: "رقم هاتف المسؤول",
+};
+
+const translateEntity = (entity: string, lang: Language): string =>
+  lang === "ar" ? ARABIC_ENTITY_NAMES[entity] ?? entity : entity;
 export type ErrorType =
   | "not found"
   | "unauthorized"
@@ -15,7 +48,6 @@ export type ErrorType =
   | "required"
   | "invalid";
 
-export type Language = "en" | "ar";
 
 export class ErrorMessages {
   static generateErrorMessage(
@@ -23,6 +55,9 @@ export class ErrorMessages {
     errorType: ErrorType = "not found",
     lang: Language = "ar"
   ): string {
+    const activeLang: Language = lang === "en" ? "en" : "ar";
+    entity = translateEntity(entity, activeLang);
+
     const messages: Record<Language, Record<ErrorType, string>> = {
       en: {
         "not found": `${entity} not found`,
@@ -43,7 +78,7 @@ export class ErrorMessages {
       },
       ar: {
         "not found": `بيانات ${entity} غير موجودة`,
-        "unauthorized": `غير مصرح: غير مصدق للوصول إلى ${entity}`,
+        "unauthorized": "غير مصرح، يرجى تسجيل الدخول أولاً",
         "forbidden": `ممنوع: ليس لديك صلاحية للوصول إلى ${entity}`,
         "bad request": `طلب غير صالح: البيانات المدخلة لـ ${entity} غير صحيحة`,
         "internal": `خطأ داخلي في الخادم: حدث خطأ أثناء معالجة ${entity}`,
@@ -60,7 +95,6 @@ export class ErrorMessages {
       },
     };
 
-    const activeLang = lang === "en" || lang === "ar" ? lang : "ar";
     return (
       messages[activeLang][errorType] ||
       messages[activeLang]["internal"] ||

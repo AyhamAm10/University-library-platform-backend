@@ -64,7 +64,7 @@ export class TenantService<T = any> extends RepoService<T> {
 
   override async create(data: any): Promise<T> {
     if (!this.tenantContext.libraryId && !this.tenantContext.isSuperAdmin) {
-      throw new ForbiddenError("Tenant context missing library identification");
+      throw new ForbiddenError("يجب تحديد المكتبة لتنفيذ هذه العملية");
     }
     const scopedData = this.buildTenantData(data);
     return await super.create(scopedData);
@@ -72,7 +72,7 @@ export class TenantService<T = any> extends RepoService<T> {
 
   override async createMany(data: any[]): Promise<{ count: number }> {
     if (!this.tenantContext.libraryId && !this.tenantContext.isSuperAdmin) {
-      throw new ForbiddenError("Tenant context missing library identification");
+      throw new ForbiddenError("يجب تحديد المكتبة لتنفيذ هذه العملية");
     }
     const scopedData = data.map((item) => this.buildTenantData(item));
     return await super.createMany(scopedData);

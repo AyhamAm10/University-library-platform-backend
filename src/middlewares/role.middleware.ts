@@ -6,11 +6,11 @@ export const checkRole = (allowedRoles: (UserRole | "STUDENT")[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user) {
-        return next(new UnauthorizedError("Authentication required"));
+        return next(new UnauthorizedError("يرجى تسجيل الدخول أولاً"));
       }
 
       if (!allowedRoles.includes(req.user.role)) {
-        return next(new ForbiddenError("Access denied: insufficient role privileges"));
+        return next(new ForbiddenError("ليس لديك صلاحية للوصول إلى هذه الخدمة"));
       }
 
       next();

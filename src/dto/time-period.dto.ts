@@ -1,10 +1,14 @@
 import * as yup from "yup";
 
+// قيمة التأكيد المطلوبة لفتح دورة جديدة عند وجود دورة نشطة (عملية حذف لا رجعة فيها)
+export const ROLLOVER_CONFIRMATION = "CONFIRM_ROLLOVER";
+
 export const CreateTimePeriodSchema = yup.object({
   name: yup.string().required("اسم الفترة الزمنية مطلوب"),
   startDate: yup.string().required("تاريخ البداية مطلوب"),
   endDate: yup.string().optional().nullable(),
   activateNow: yup.boolean().optional().default(true),
+  confirmation: yup.string().optional(),
 });
 
 export type CreateTimePeriodDto = yup.InferType<typeof CreateTimePeriodSchema>;

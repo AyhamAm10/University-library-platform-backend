@@ -14,6 +14,14 @@ subscriptionRouter.get("/", (req, res, next) => {
   controller.getSubscriptions(req, res, next);
 });
 
+subscriptionRouter.get("/archive", checkRole([UserRole.LIBRARY_ADMIN, UserRole.SUPER_ADMIN]), (req, res, next) => {
+  controller.getArchive(req, res, next);
+});
+
+subscriptionRouter.get("/archive/periods", checkRole([UserRole.LIBRARY_ADMIN, UserRole.SUPER_ADMIN]), (req, res, next) => {
+  controller.getArchivedPeriods(req, res, next);
+});
+
 subscriptionRouter.post("/", checkRole([UserRole.LIBRARY_ADMIN, UserRole.SUPER_ADMIN]), (req, res, next) => {
   controller.createSubscription(req, res, next);
 });

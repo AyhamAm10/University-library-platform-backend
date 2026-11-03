@@ -1,13 +1,21 @@
 import { TenantService } from "../tenant.service";
-import { TimePeriod, PeriodStatus } from "@prisma/client";
+import {
+  TimePeriod,
+  PeriodStatus,
+  Prisma,
+  FeatureType,
+  SubscriptionStatus,
+} from "@prisma/client";
 import { Ensure } from "../../common/errors/Ensure.handler";
 import { BadRequestError } from "../../common/errors/http.error";
 import { TenantContext } from "../../types/tenant.context";
 import {
   CreateTimePeriodDto,
-  UpdateTimePeriodDto,
   CopyContentDto,
+  ROLLOVER_CONFIRMATION,
 } from "../../dto/time-period.dto";
+import { prisma } from "../../config/prisma";
+import { FileStorageService } from "../storage/file-storage.service";
 import { SubscriptionService } from "./subscription.service";
 import { LectureService } from "./lecture.service";
 import { GoldService } from "./gold.service";
@@ -79,32 +87,97 @@ export class TimePeriodService extends TenantService<TimePeriod> {
     return this._questionBankService;
   }
 
+  /**
+   * فتح دورة جديدة (Rollover):
+   * 1. أرشفة الدورة الحالية.
+   * 2. نقل اشتراكاتها إلى جدول الأرشيف ثم حذفها مع طلبات الاشتراك من الجداول الحية.
+   * 3. حذف المحاضرات والأوراق الذهبية والملخصات والكورسات مع ملفاتها.
+   * 4. نقل بنك الأسئلة وملفاته إلى الدورة الجديدة (يبقى كما هو).
+   * الطلاب والفروع والأقسام والسنوات والمواد لا تتأثر.
+   * كل العمليات داخل Transaction واحدة، وحذف الملفات من التخزين يتم فقط بعد نجاحها.
+   */
   async createPeriod(dto: CreateTimePeriodDto) {
     const activate = dto.activateNow ?? true;
 
-    if (activate) {
-      // Find existing active period
-      const currentActive = await this.getCurrentActivePeriod();
-
-      if (currentActive) {
-        // 1. Archive the existing period
-        await this.update(currentActive.id, {
-          status: PeriodStatus.ARCHIVED,
-        });
-
-        // 2. Mark its active subscriptions as EXPIRED (Never deleted!)
-        await this.subscriptionService.expireActiveSubscriptions(currentActive.id);
-      }
+    if (!activate) {
+      return await this.create({
+        name: dto.name.trim(),
+        startDate: new Date(dto.startDate),
+        endDate: dto.endDate ? new Date(dto.endDate) : null,
+        status: PeriodStatus.ARCHIVED,
+      });
     }
 
-    const newPeriod = await this.create({
-      name: dto.name.trim(),
-      startDate: new Date(dto.startDate),
-      endDate: dto.endDate ? new Date(dto.endDate) : null,
-      status: activate ? PeriodStatus.ACTIVE : PeriodStatus.ARCHIVED,
-    });
+    const libraryId = this.requireLibraryId();
+    const currentActive = await this.getCurrentActivePeriod();
+    if (currentActive && dto.confirmation !== ROLLOVER_CONFIRMATION) {
+      throw new BadRequestError(
+        "فتح دورة جديدة سيؤرشف اشتراكات الدورة الحالية ويحذف المحاضرات والملخصات والأوراق الذهبية والكورسات وملفاتها نهائياً. يرجى تأكيد العملية"
+      );
+    }
 
-    return newPeriod;
+    const { newPeriod, report, storageKeys } = await prisma.$transaction(
+      async (tx) => {
+        // قفل على مستوى المكتبة يمنع فتح دورتين بالتوازي
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${libraryId}))`;
+
+        const previous = await tx.timePeriod.findFirst({
+          where: { libraryId, status: PeriodStatus.ACTIVE },
+        });
+
+        const created = await tx.timePeriod.create({
+          data: {
+            libraryId,
+            name: dto.name.trim(),
+            startDate: new Date(dto.startDate),
+            endDate: dto.endDate ? new Date(dto.endDate) : null,
+            status: PeriodStatus.ACTIVE,
+          },
+        });
+
+        if (!previous) {
+          return { newPeriod: created, report: null, storageKeys: [] as string[] };
+        }
+
+        await tx.timePeriod.update({
+          where: { id: previous.id },
+          data: { status: PeriodStatus.ARCHIVED, endDate: previous.endDate ?? new Date() },
+        });
+
+        const archivedSubscriptions = await this.archivePeriodSubscriptions(tx, libraryId, previous);
+        const purge = await this.purgePeriodContent(tx, libraryId, previous.id);
+
+        // بنك الأسئلة يبقى وينتقل للدورة الجديدة مع ملفاته
+        const movedQuestions = await tx.questionBankItem.updateMany({
+          where: { libraryId, timePeriodId: previous.id },
+          data: { timePeriodId: created.id },
+        });
+        await tx.storedFile.updateMany({
+          where: { libraryId, timePeriodId: previous.id, featureType: FeatureType.QUESTION_BANK },
+          data: { timePeriodId: created.id },
+        });
+
+        return {
+          newPeriod: created,
+          storageKeys: purge.storageKeys,
+          report: {
+            archivedPeriod: { id: previous.id, name: previous.name },
+            archivedSubscriptions,
+            deletedLectures: purge.lectures,
+            deletedGoldMaterials: purge.goldMaterials,
+            deletedSummaries: purge.summaries,
+            deletedCourses: purge.courses,
+            deletedFiles: purge.storageKeys.length,
+            keptQuestions: movedQuestions.count,
+          },
+        };
+      },
+      { timeout: 120_000, maxWait: 10_000 }
+    );
+
+    await this.deletePhysicalFiles(storageKeys);
+
+    return { ...newPeriod, rollover: report };
   }
 
   async activatePeriod(periodId: string) {
@@ -115,23 +188,17 @@ export class TimePeriodService extends TenantService<TimePeriod> {
       return targetPeriod;
     }
 
-    // Find current active period and archive it
+    // محتوى الدورات المؤرشفة محذوف واشتراكاتها في الأرشيف، لذا لا يُسمح بالعودة إليها
     const currentActive = await this.getCurrentActivePeriod();
-
     if (currentActive) {
-      await this.update(currentActive.id, {
-        status: PeriodStatus.ARCHIVED,
-      });
-
-      await this.subscriptionService.expireActiveSubscriptions(currentActive.id);
+      throw new BadRequestError(
+        "لا يمكن إعادة تفعيل دورة مؤرشفة أثناء وجود دورة نشطة. لبدء فصل جديد أنشئ دورة جديدة"
+      );
     }
 
-    // Activate target period
-    const activated = await this.update(periodId, {
+    return await this.update(periodId, {
       status: PeriodStatus.ACTIVE,
     });
-
-    return activated;
   }
 
   async getPeriods() {
@@ -264,17 +331,176 @@ export class TimePeriodService extends TenantService<TimePeriod> {
       throw new BadRequestError("لا يمكن حذف أو تنظيف الفترة الزمنية النشطة حالياً");
     }
 
-    // Clean period scoped data through their respective domain services
-    await this.lectureService.deleteMany({ timePeriodId: periodId });
-    await this.goldService.deleteMany({ timePeriodId: periodId });
-    await this.summaryService.deleteMany({ timePeriodId: periodId });
-    await this.questionBankService.deleteMany({ timePeriodId: periodId });
-    await this.courseService.deleteCoursesForPeriod(periodId);
-    await this.subscriptionService.deleteMany({ timePeriodId: periodId });
+    const libraryId = this.requireLibraryId();
 
-    // Delete time period
-    await this.delete(periodId);
+    // الاشتراكات تُنقل للأرشيف ولا تُحذف، وسجل الدورة نفسه يبقى كمرجع للأرشيف
+    const { storageKeys, archivedSubscriptions } = await prisma.$transaction(
+      async (tx) => {
+        const archived = await this.archivePeriodSubscriptions(tx, libraryId, period!);
+        const purge = await this.purgePeriodContent(tx, libraryId, periodId);
+        await tx.questionBankItem.deleteMany({ where: { libraryId, timePeriodId: periodId } });
+        return { storageKeys: purge.storageKeys, archivedSubscriptions: archived };
+      },
+      { timeout: 120_000, maxWait: 10_000 }
+    );
 
-    return { cleanedPeriodId: periodId };
+    await this.deletePhysicalFiles(storageKeys);
+
+    return { cleanedPeriodId: periodId, archivedSubscriptions, deletedFiles: storageKeys.length };
+  }
+
+  private requireLibraryId(): string {
+    if (!this.libraryId) {
+      throw new BadRequestError("يجب تحديد المكتبة لتنفيذ هذه العملية");
+    }
+    return this.libraryId;
+  }
+
+  /**
+   * ينسخ اشتراكات الدورة إلى جدول الأرشيف كلقطة نصية ثم يحذفها مع طلبات الاشتراك.
+   */
+  private async archivePeriodSubscriptions(
+    tx: Prisma.TransactionClient,
+    libraryId: string,
+    period: TimePeriod
+  ): Promise<number> {
+    const subscriptions = await tx.subscription.findMany({
+      where: { libraryId, timePeriodId: period.id },
+      include: {
+        student: { select: { fullName: true, phone: true } },
+        subject: { select: { name: true } },
+      },
+    });
+
+    if (subscriptions.length > 0) {
+      const materialIds = subscriptions
+        .map((s) => s.materialId)
+        .filter((id): id is string => Boolean(id));
+      const materialTitles = await this.resolveMaterialTitles(tx, materialIds);
+      const now = new Date();
+
+      await tx.subscriptionArchive.createMany({
+        data: subscriptions.map((s) => ({
+          libraryId,
+          timePeriodId: period.id,
+          timePeriodName: period.name,
+          originalSubscriptionId: s.id,
+          studentId: s.studentId,
+          studentName: s.student.fullName,
+          studentPhone: s.student.phone,
+          subjectId: s.subjectId,
+          subjectName: s.subject.name,
+          featureType: s.featureType,
+          materialId: s.materialId,
+          materialTitle: s.materialId ? materialTitles.get(s.materialId) ?? null : null,
+          status: s.status === SubscriptionStatus.ACTIVE ? SubscriptionStatus.EXPIRED : s.status,
+          isFreeTrial: s.isFreeTrial,
+          subscribedAt: s.subscribedAt,
+          expiresAt: s.expiresAt ?? now,
+        })),
+      });
+    }
+
+    await tx.subscription.deleteMany({ where: { libraryId, timePeriodId: period.id } });
+    await tx.subscriptionRequest.deleteMany({ where: { libraryId, timePeriodId: period.id } });
+
+    return subscriptions.length;
+  }
+
+  private async resolveMaterialTitles(
+    tx: Prisma.TransactionClient,
+    ids: string[]
+  ): Promise<Map<string, string>> {
+    const titles = new Map<string, string>();
+    if (ids.length === 0) return titles;
+
+    const where = { id: { in: ids } };
+    const [golds, summaries, courses, questions] = await Promise.all([
+      tx.goldMaterial.findMany({ where, select: { id: true, title: true } }),
+      tx.summaryMaterial.findMany({ where, select: { id: true, title: true } }),
+      tx.course.findMany({ where, select: { id: true, title: true } }),
+      tx.questionBankItem.findMany({ where, select: { id: true, title: true, questionText: true } }),
+    ]);
+
+    golds.forEach((g) => titles.set(g.id, g.title));
+    summaries.forEach((s) => titles.set(s.id, s.title));
+    courses.forEach((c) => titles.set(c.id, c.title));
+    questions.forEach((q) => titles.set(q.id, q.title || q.questionText || "سؤال"));
+
+    return titles;
+  }
+
+  /**
+   * يحذف المحاضرات والأوراق الذهبية والملخصات والكورسات للدورة مع سجلات ملفاتها،
+   * ويعيد مفاتيح التخزين لحذفها فعلياً بعد نجاح الـ Transaction.
+   * الملف المستخدم من محتوى آخر خارج هذه الدورة لا يُحذف.
+   */
+  private async purgePeriodContent(
+    tx: Prisma.TransactionClient,
+    libraryId: string,
+    periodId: string
+  ) {
+    const scope = { libraryId, timePeriodId: periodId };
+    const [lectures, golds, summaries] = await Promise.all([
+      tx.lecture.findMany({ where: scope, select: { fileId: true } }),
+      tx.goldMaterial.findMany({ where: scope, select: { fileId: true } }),
+      tx.summaryMaterial.findMany({ where: scope, select: { fileId: true } }),
+    ]);
+
+    const linkedFileIds = [...lectures, ...golds, ...summaries]
+      .map((item) => item.fileId)
+      .filter((id): id is string => Boolean(id));
+
+    const candidateFiles = await tx.storedFile.findMany({
+      where: {
+        libraryId,
+        OR: [
+          { id: { in: linkedFileIds } },
+          {
+            timePeriodId: periodId,
+            featureType: { in: [FeatureType.LECTURES, FeatureType.GOLD_PAPERS, FeatureType.SUMMARIES] },
+          },
+        ],
+      },
+      select: { id: true, storageKey: true },
+    });
+
+    await tx.lecture.deleteMany({ where: scope });
+    await tx.goldMaterial.deleteMany({ where: scope });
+    await tx.summaryMaterial.deleteMany({ where: scope });
+    await tx.courseLesson.deleteMany({ where: { course: scope } });
+    const courses = await tx.course.deleteMany({ where: scope });
+
+    const candidateIds = candidateFiles.map((f) => f.id);
+    const stillUsed = new Set<string>();
+    if (candidateIds.length > 0) {
+      const usedWhere = { fileId: { in: candidateIds } };
+      const [l, g, s, q] = await Promise.all([
+        tx.lecture.findMany({ where: usedWhere, select: { fileId: true } }),
+        tx.goldMaterial.findMany({ where: usedWhere, select: { fileId: true } }),
+        tx.summaryMaterial.findMany({ where: usedWhere, select: { fileId: true } }),
+        tx.questionBankItem.findMany({ where: usedWhere, select: { fileId: true } }),
+      ]);
+      [...l, ...g, ...s, ...q].forEach((item) => item.fileId && stillUsed.add(item.fileId));
+    }
+
+    const deletableFiles = candidateFiles.filter((f) => !stillUsed.has(f.id));
+    if (deletableFiles.length > 0) {
+      await tx.storedFile.deleteMany({ where: { id: { in: deletableFiles.map((f) => f.id) } } });
+    }
+
+    return {
+      lectures: lectures.length,
+      goldMaterials: golds.length,
+      summaries: summaries.length,
+      courses: courses.count,
+      storageKeys: deletableFiles.map((f) => f.storageKey).filter(Boolean),
+    };
+  }
+
+  private async deletePhysicalFiles(storageKeys: string[]) {
+    for (const key of storageKeys) {
+      await FileStorageService.deletePhysicalFile(key);
+    }
   }
 }

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { SubscriptionService } from "../services/domain/subscription.service";
+import { SubscriptionArchiveService } from "../services/domain/subscription-archive.service";
 import { validator } from "../common/errors/validator";
 import { CreateSubscriptionSchema, CreateSubscriptionDto } from "../dto/subscription.dto";
 import { ApiResponse } from "../common/responses/api.response";
@@ -64,6 +65,42 @@ export class SubscriptionController {
           limit: result.limit,
         })
       );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getArchive(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { timePeriodId, studentId, featureType, search, page, limit } = req.query;
+
+      const service = new SubscriptionArchiveService(req.tenant!);
+      const result = await service.fetchArchive({
+        timePeriodId: timePeriodId as string,
+        studentId: studentId as string,
+        featureType: featureType as string,
+        search: search as string,
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+      });
+
+      return res.status(HttpStatusCode.OK).json(
+        ApiResponse.success(result.data, "أرشيف الاشتراكات", {
+          count: result.total,
+          page: result.page,
+          limit: result.limit,
+        })
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getArchivedPeriods(req: Request, res: Response, next: NextFunction) {
+    try {
+      const service = new SubscriptionArchiveService(req.tenant!);
+      const periods = await service.getArchivedPeriodsSummary();
+      return res.status(HttpStatusCode.OK).json(ApiResponse.success(periods, "الدورات المؤرشفة"));
     } catch (error) {
       next(error);
     }

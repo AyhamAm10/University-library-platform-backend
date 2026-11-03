@@ -4,7 +4,7 @@ import { ForbiddenError, UnauthorizedError } from "../common/errors/http.error";
 export const checkUserStatus = (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user) {
-      return next(new UnauthorizedError("Authentication required"));
+      return next(new UnauthorizedError("يرجى تسجيل الدخول أولاً"));
     }
     next();
   } catch (error) {

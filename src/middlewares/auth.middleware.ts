@@ -34,7 +34,7 @@ export const authMiddleware = async (
         // Attempt silent refresh via refresh token cookie
         const refreshToken = req.cookies?.refreshToken;
         if (!refreshToken) {
-          return next(new UnauthorizedError("Access token expired"));
+          return next(new UnauthorizedError("انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً"));
         }
 
         try {
@@ -48,7 +48,7 @@ export const authMiddleware = async (
           });
 
           if (!user || !user.isActive) {
-            return next(new ForbiddenError("User is inactive or not found"));
+            return next(new ForbiddenError("الحساب غير موجود أو موقوف"));
           }
 
           const newAccessToken = jwt.sign(
@@ -60,10 +60,10 @@ export const authMiddleware = async (
           res.setHeader("Authorization", `Bearer ${newAccessToken}`);
           decoded = { userId: user.id, role: user.role, libraryId: user.libraryId };
         } catch {
-          return next(new UnauthorizedError("Session expired, please login again"));
+          return next(new UnauthorizedError("انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً"));
         }
       } else {
-        return next(new UnauthorizedError("Invalid token"));
+        return next(new UnauthorizedError("رمز الدخول غير صالح، يرجى تسجيل الدخول مجدداً"));
       }
     }
 
@@ -74,7 +74,7 @@ export const authMiddleware = async (
       });
 
       if (!student || !student.isActive) {
-        return next(new ForbiddenError("Student account is inactive or not found"));
+        return next(new ForbiddenError("حساب الطالب غير موجود أو غير مفعل"));
       }
 
       req.student = student;
@@ -92,7 +92,7 @@ export const authMiddleware = async (
 
     const userId = decoded?.userId;
     if (!userId) {
-      return next(new UnauthorizedError("Invalid token payload"));
+      return next(new UnauthorizedError("رمز الدخول غير صالح"));
     }
 
     const user = await prisma.user.findUnique({
@@ -100,7 +100,7 @@ export const authMiddleware = async (
     });
 
     if (!user || !user.isActive) {
-      return next(new ForbiddenError("Account is inactive or disabled"));
+      return next(new ForbiddenError("الحساب موقوف أو غير مفعل"));
     }
 
     req.user = {
