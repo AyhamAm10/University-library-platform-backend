@@ -34,7 +34,8 @@ app.use(
 
 app.use(
   cors({
-    origin: Environment.CORS_ORIGINS.length > 0 ? Environment.CORS_ORIGINS : true,
+    origin: ["*"],
+    // origin: Environment.CORS_ORIGINS.length > 0 ? Environment.CORS_ORIGINS : true,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: [
