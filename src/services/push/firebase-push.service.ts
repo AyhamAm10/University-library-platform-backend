@@ -72,7 +72,10 @@ export class FirebasePushService {
       where: { studentId: { in: studentIds } },
       select: { token: true, platform: true },
     });
-    if (tokens.length === 0) return;
+    if (tokens.length === 0) {
+      logger.info(`[Push] Skipped: none of the ${studentIds.length} recipients has a registered device`);
+      return;
+    }
 
     const staleTokens: string[] = [];
     let delivered = 0;
