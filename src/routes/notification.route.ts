@@ -40,6 +40,10 @@ notificationRouter.delete("/push-token", studentOnly, (req, res, next) => {
 // Library admin: sent history & manual announcements
 const libraryAdmin = checkRole([UserRole.LIBRARY_ADMIN, UserRole.SUPER_ADMIN]);
 
+notificationRouter.get("/stats", libraryAdmin, (req, res, next) => {
+  controller.getStats(req, res, next);
+});
+
 notificationRouter.get("/", libraryAdmin, (req, res, next) => {
   controller.listSent(req, res, next);
 });

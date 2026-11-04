@@ -122,6 +122,16 @@ export class NotificationController {
     }
   }
 
+  async getStats(req: Request, res: Response, next: NextFunction) {
+    try {
+      const service = new NotificationService(req.tenant!);
+      const stats = await service.getStats();
+      return res.status(HttpStatusCode.OK).json(ApiResponse.success(stats, "ملخص الإشعارات"));
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async createAnnouncement(req: Request, res: Response, next: NextFunction) {
     try {
       const dto = await validator(CreateAnnouncementSchema, req.body);

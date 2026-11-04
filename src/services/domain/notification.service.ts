@@ -234,22 +234,80 @@ export class NotificationService extends TenantService<Notification> {
    * سجل الإشعارات المرسلة مع عدد من قرأها (للوحة التحكم).
    */
   async listSent(options: { page?: number; limit?: number; category?: string }) {
+    // يقبل نوعاً واحداً أو عدة أنواع مفصولة بفاصلة (مثل: SUBSCRIPTION,COMPLAINT,SYSTEM)
+    const categories = (options.category || "")
+      .split(",")
+      .map((c) => c.trim())
+      .filter((c): c is NotificationCategory => c in NotificationCategory);
+
     const result = await this.getAllWithPagination({
-      where: options.category ? { category: options.category as NotificationCategory } : {},
+      where: categories.length > 0 ? { category: { in: categories } } : {},
       include: {
-        _count: { select: { recipients: { where: { readAt: { not: null } } } } },
+        // اسم الطالب للإشعارات الفردية
+        recipients: { take: 1, select: { student: { select: { fullName: true } } } },
       },
       page: options.page,
       limit: options.limit,
       orderBy: { createdAt: "desc" },
     });
 
+    // الأعداد من سجلات المستلمين الفعلية (أدق من recipientsCount المخزن للإشعارات القديمة)
+    const ids = result.data.map((row: any) => row.id);
+    const [totals, reads] = await Promise.all([
+      prisma.notificationRecipient.groupBy({
+        by: ["notificationId"],
+        where: { notificationId: { in: ids } },
+        _count: { _all: true },
+      }),
+      prisma.notificationRecipient.groupBy({
+        by: ["notificationId"],
+        where: { notificationId: { in: ids }, readAt: { not: null } },
+        _count: { _all: true },
+      }),
+    ]);
+    const totalById = new Map(totals.map((t) => [t.notificationId, t._count._all]));
+    const readById = new Map(reads.map((r) => [r.notificationId, r._count._all]));
+
     return {
       ...result,
       data: result.data.map((row: any) => {
-        const { _count, ...rest } = row;
-        return { ...rest, readCount: _count?.recipients ?? 0 };
+        const { recipients, ...rest } = row;
+        const recipientsCount = totalById.get(row.id) ?? row.recipientsCount ?? 0;
+        return {
+          ...rest,
+          recipientsCount,
+          readCount: readById.get(row.id) ?? 0,
+          recipientName: recipientsCount === 1 ? recipients?.[0]?.student?.fullName ?? null : null,
+        };
       }),
+    };
+  }
+
+  /**
+   * ملخص الإشعارات للوحة التحكم: الأعداد حسب المجموعة، الوصول، ونسبة القراءة.
+   */
+  async getStats() {
+    const personal = [NotificationCategory.SUBSCRIPTION, NotificationCategory.COMPLAINT, NotificationCategory.SYSTEM];
+
+    const [total, announcements, newContent, personalCount, delivered, read, last] = await Promise.all([
+      this.count({}),
+      this.count({ category: NotificationCategory.ANNOUNCEMENT }),
+      this.count({ category: NotificationCategory.NEW_CONTENT }),
+      this.count({ category: { in: personal } }),
+      prisma.notificationRecipient.count({ where: { libraryId: this.libraryId } }),
+      prisma.notificationRecipient.count({ where: { libraryId: this.libraryId, readAt: { not: null } } }),
+      this.findOne({}, { orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    ]);
+
+    return {
+      total,
+      announcements,
+      newContent,
+      personal: personalCount,
+      delivered,
+      read,
+      readRate: delivered > 0 ? Math.round((read / delivered) * 100) : 0,
+      lastSentAt: (last as any)?.createdAt ?? null,
     };
   }
 
