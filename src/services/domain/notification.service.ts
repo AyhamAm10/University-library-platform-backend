@@ -179,22 +179,45 @@ export class NotificationService extends TenantService<Notification> {
    * إشعار يدوي من إدارة المكتبة لطلابها فقط، مع إمكانية التحديد بالفرع/القسم/السنة.
    */
   async createAnnouncement(dto: CreateAnnouncementDto, createdById: string) {
+    // السنة غير مخزنة غالباً على الطالب (يرى كل سنوات فرعه/قسمه في التطبيق)،
+    // لذلك تحديد سنة يشمل: طلاب السنة + الطلاب بلا سنة محددة في نفس الفرع/القسم
+    // (نفس منطق ظهور المواد) + أي مشترك حالياً في مادة من مواد هذه السنة.
     const students = await prisma.student.findMany({
       where: {
         libraryId: this.libraryId,
         isActive: true,
         ...(dto.branchId ? { branchId: dto.branchId } : {}),
         ...(dto.departmentId ? { departmentId: dto.departmentId } : {}),
-        ...(dto.academicYearId ? { academicYearId: dto.academicYearId } : {}),
+        ...(dto.academicYearId
+          ? { OR: [{ academicYearId: dto.academicYearId }, { academicYearId: null }] }
+          : {}),
       },
       select: { id: true },
     });
+
+    const yearSubscribers = dto.academicYearId
+      ? await prisma.subscription.findMany({
+          where: {
+            libraryId: this.libraryId,
+            status: SubscriptionStatus.ACTIVE,
+            ...(this.timePeriodId ? { timePeriodId: this.timePeriodId } : {}),
+            subject: { academicYearId: dto.academicYearId },
+            student: { isActive: true },
+          },
+          select: { studentId: true },
+          distinct: ["studentId"],
+        })
+      : [];
+
+    const studentIds = Array.from(
+      new Set([...students.map((s) => s.id), ...yearSubscribers.map((s) => s.studentId)])
+    );
 
     const notification = await this.dispatch({
       category: NotificationCategory.ANNOUNCEMENT,
       title: dto.title.trim(),
       message: dto.message.trim(),
-      studentIds: students.map((s) => s.id),
+      studentIds,
       audience: {
         branchId: dto.branchId ?? null,
         departmentId: dto.departmentId ?? null,
@@ -204,7 +227,7 @@ export class NotificationService extends TenantService<Notification> {
       createdById,
     });
 
-    return { notification, recipientsCount: students.length };
+    return { notification, recipientsCount: studentIds.length };
   }
 
   /**
